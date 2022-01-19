@@ -208,9 +208,16 @@ bool MainWindow::setRole(QString role)
         RoleBox.setWindowTitle("Select Role");
         RoleBox.setIcon(QMessageBox::Question);
         RoleBox.setInformativeText("Which Role do you want to Load?");
-        QPushButton *managerButton = RoleBox.addButton(tr("Project Manager"),QMessageBox::AcceptRole);
-        QPushButton *verifierButton = RoleBox.addButton(tr("Verifier"),QMessageBox::AcceptRole);
-        QPushButton *correctorButton = RoleBox.addButton(tr("Corrector"),QMessageBox::AcceptRole);
+
+        #ifdef Q_OS_WIN
+        QPushButton *correctorButton = RoleBox.addButton(("Corrector"),QMessageBox::AcceptRole);
+        QPushButton *verifierButton = RoleBox.addButton(("Verifier"),QMessageBox::AcceptRole);
+        QPushButton *managerButton = RoleBox.addButton(("Project Manager"),QMessageBox::AcceptRole);
+        #else
+        QPushButton *managerButton = RoleBox.addButton(("Project Manager"),QMessageBox::AcceptRole);
+        QPushButton *verifierButton = RoleBox.addButton(("Verifier"),QMessageBox::AcceptRole);
+        QPushButton *correctorButton = RoleBox.addButton(("Corrector"),QMessageBox::AcceptRole);
+        #endif
         RoleBox.exec();
         if(RoleBox.clickedButton() == verifierButton)
             mRole = "Verifier";
@@ -5511,13 +5518,19 @@ void MainWindow::globalReplacePreviewfn(QMap <QString, QString> previewMap , QVe
                 {
                     QStandardItem *Item = new QStandardItem(pages);
                     model->setItem(lineindex, 0,Item);
-                    QStandardItem *Item1 = new QStandardItem(sentences.at(i));
+                    string sent = sentences.at(i).toStdString();
+                    string newSentence = sent.substr(sent.find("==>")+3);
+                    string oldSentence = sent.substr(0, sent.find("==>"));
+                    QStandardItem *Item1 = new QStandardItem(QString::fromStdString(oldSentence));
                     model->setItem(lineindex, 1,Item1);
+                    QStandardItem *Item2 = new QStandardItem(QString::fromStdString(newSentence));
+                    model->setItem(lineindex, 2,Item2);
                     lineindex++;
                 }
             }
             model->setHeaderData (0,Qt::Horizontal, QObject::tr ("Page"));
-            model->setHeaderData (1,Qt::Horizontal, QObject::tr ("Sentences"));
+            model->setHeaderData (1,Qt::Horizontal, QObject::tr ("Before Repalce"));
+            model->setHeaderData (2,Qt::Horizontal, QObject::tr ("After Replace"));
       }
   globalReplacePreview gp(this, model);
   gp.exec();
@@ -5542,8 +5555,8 @@ QMap<QString,QStringList> MainWindow::getBeforeAndAfterWords(QString fPath,QMap 
   for (grmIterator = globalReplacementMap.begin(); grmIterator != globalReplacementMap.end(); ++grmIterator)
   {
       QString oldWord = grmIterator.key();
-      QRegularExpression rx(".*"+oldWord+".*");
-
+      QString newWord = grmIterator.value();
+      QRegularExpression rx("((?:[[\u0900-\u097F]+//]+[[\u0900-\u097F]+//]+){0,5}\W)( "+ oldWord + ")(\W(?:[[\u0900-\u097F]+//]+[[\u0900-\u097F]+//]+){0,5})");
       for(int i=0;i<rx.captureCount()+1;++i)
       {
          QRegularExpressionMatchIterator match = rx.globalMatch(plain);
@@ -5551,9 +5564,13 @@ QMap<QString,QStringList> MainWindow::getBeforeAndAfterWords(QString fPath,QMap 
            {
               QRegularExpressionMatch Extmatch = match.next();
               QString matched = Extmatch.captured(i);
-              if(matched.length() >0 )
+              QString newSentence = matched;
+              newSentence = newSentence.replace(oldWord, newWord);
+              QString finalSentence = matched + "==>" + newSentence;
+              qDebug() << "Final Sentence" << finalSentence;
+              if(newSentence.length() >0 )
               {
-                  sentences << matched;
+                  sentences << finalSentence;
               }
            }
        }
@@ -5567,6 +5584,10 @@ QMap<QString,QStringList> MainWindow::getBeforeAndAfterWords(QString fPath,QMap 
   return previewPagesMap;
 
 }
+
+
+
+
 //Global CPair End
 
 /*!
@@ -6239,11 +6260,10 @@ void MainWindow::LoadImageFromFile(QFile * f)
     ui->graphicsView->setScene(graphic);
     ui->graphicsView->fitInView(graphic->itemsBoundingRect(), Qt::KeepAspectRatio);
     if (z)delete z;
-    z = new Graphics_view_zoom(ui->graphicsView);
+    z = new Graphics_view_zoom(ui->graphicsView, graphic);
     z->set_modifiers(Qt::NoModifier);
     z->zoom_level = 100;
     connect(z, SIGNAL(zoomed()), this, SLOT(zoomedUsingScroll()));
-    connect(z, SIGNAL(zoomLimitCrossed()), this, SLOT(handleZoomLimitCrossed()));
 
     item1 =new QGraphicsRectItem(0, 0, 1, 1);
     graphic->addItem(item1);
@@ -6952,13 +6972,6 @@ void MainWindow::zoom_slider_moved(int value)
 void MainWindow::zoomedUsingScroll()
 {
     ui->horizontalSlider->setValue(z->zoom_level);
-}
-
-void MainWindow::handleZoomLimitCrossed()
-{
-    ui->graphicsView->fitInView(graphic->itemsBoundingRect(), Qt::KeepAspectRatio);
-    z->zoom_level = 100;
-    ui->horizontalSlider->setValue(100);
 }
 
 

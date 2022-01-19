@@ -74,15 +74,9 @@ public:
     }
     QTextBrowser * getCurrentBrowser() {
         return curr_browser;
-
-
-
-
     };
 
     void load_data();
-
-
 
 private slots:
     void createActions();
@@ -378,8 +372,6 @@ private slots:
 
     void zoomedUsingScroll(); // Slot for signal zoomed() emitted from zoom.cpp
 
-    void handleZoomLimitCrossed();  // Slot for signal zoomLimitCrossed() emitted from zoom.cpp
-
     void on_actionUndo_Global_Replace_triggered();
 
     bool undoGlobalReplace_Single_Word(QString oldWord, QString newWord);
@@ -395,6 +387,11 @@ private slots:
     void globalReplacePreviewfn(QMap <QString, QString>,QVector<int>);
 
     QMap<QString,QStringList> getBeforeAndAfterWords(QString fPath,QMap <QString, QString> globalReplacementMap);
+
+    //QMap<QString,QStringList> getBeforeGlobalReplaceSentences(QString fPath,QMap <QString, QString> globalReplacementMap);
+
+    //QMap<QString,QStringList> getAfterGlobalReplaceSentences(QString fPath,QMap <QString, QString> globalReplacementMap);
+
 
     void on_actionUpload_triggered();
 
