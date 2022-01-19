@@ -127,6 +127,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent),ui(new Ui::MainWin
     qInstallMessageHandler(crashlog::myMessageHandler);
 //    ui->textBrowser->setStyleSheet("background-color:white;");
 
+
     int largeWidth = QGuiApplication::primaryScreen ()->size ().width ();
     ui->splitter->setSizes(QList<int>({largeWidth/2 , largeWidth, largeWidth}));
     ui->tabWidget_2->tabBar()->hide();
@@ -3292,28 +3293,19 @@ void MainWindow::on_actionAllFontProperties_triggered()
  * \fn MainWindow::on_actionBold_triggered()
  * \brief Sets the font weight to bold
 */
-void MainWindow::on_actionBold_triggered()
-{
-    if(!curr_browser || curr_browser->isReadOnly())
-        return;
-    QTextCursor cursor = curr_browser->textCursor();
-    bool isBold = cursor.charFormat().font().bold();
-    QTextCharFormat fmt;
-    /*
-     * If the font-weight value is bold then
-     * it will change it to normal else bold.
-    */
-    fmt.setFontWeight(isBold ? QFont::Normal : QFont::Bold);
-    cursor.mergeCharFormat(fmt);
-    curr_browser->mergeCurrentCharFormat(fmt);
-  //  curr_browser->setFont(QFontDialog::getFont(0,QFont::Bold,curr_browser->font()));
-   // cursor.setCharFormat(QFontDialog::getFont(0,QFont::Bold,curr_browser->font()));
-}
 
 /*!
  * \fn MainWindow::on_actionUnBold_triggered()
  * \brief Sets the font weight to regular
 */
+void MainWindow::on_actionBold_triggered(bool bold)
+{
+    if(!curr_browser || curr_browser->isReadOnly())
+            return;
+        //curr_browser->setFontWeight(QFont::Bold);
+       bold ? curr_browser->setFontWeight(QFont::Bold) :
+              curr_browser->setFontWeight(QFont::Normal);
+}
 void MainWindow::on_actionUnBold_triggered()
 {
     if(!curr_browser || curr_browser->isReadOnly())
@@ -3327,19 +3319,14 @@ void MainWindow::on_actionUnBold_triggered()
  * \fn MainWindow::on_actionItalic_triggered()
  * \brief Sets the font style to italic
 */
-void MainWindow::on_actionItalic_triggered()
+void MainWindow::on_actionItalic_triggered(bool italic)
 {
     if(!curr_browser || curr_browser->isReadOnly())
         return;
 
-    QTextCursor cursor = curr_browser->textCursor();                        // initialize cursor position at text cursor's position
-    bool isItalic = cursor.charFormat().font().italic();                    // check if character under cursor is italic or not
-
-    QTextCharFormat fmt;
-    fmt.setFontItalic(isItalic ? false : true);                             // if font is italic set font to regular, else set it to italic
-
-    cursor.mergeCharFormat(fmt);
-    curr_browser->mergeCurrentCharFormat(fmt);                              // Merge current character format to character under cursor's format (previous properties + italic/non italic)
+        //curr_browser->setFontWeight(QFont::Bold);
+       curr_browser->setFontItalic(italic);
+             //curr_browser->setFontWeight(QFont::Normal);                            // Merge current character format to character under cursor's format (previous properties + italic/non italic)
 }
 
 /*!
@@ -5230,8 +5217,8 @@ QMap <QString, QString> MainWindow::getGlobalReplacementMapFromChecklistDialog(Q
         *replaceInAllPages = grDialog.getStatesOfCheckboxes();
         globalReplacementMap = grDialog.getFilteredGlobalReplacementMap();
     }
-
-    return globalReplacementMap;
+    //qDebug()<<"globalReplacementMap"<<globalReplacementMap<<endl;
+    return globalReplacementMap; 
 
 }
 
@@ -5262,13 +5249,11 @@ void MainWindow::runGlobalReplace(QString currentFileDirectory , QVector <QStrin
     int x1 = 0;
     int check=2;
 
+//    qDebug()<<"changedWords"<<changedWords<<endl;
     //! if only one change spawn checkbox
     if (noOfChangedWords == 1){
         QRegExp sep("\\s*=>*");
         QStringList changesList = changedWords[0].split(sep, QString::SkipEmptyParts );
-//        qDebug()<<"Separator"<<sep;
-//        qDebug()<<"changesList[0]"<<changesList[0];
-//        qDebug()<<"changesList[1]"<<changesList[1];
         bool updateGlobalCPairs = globalReplaceQueryMessageBox(changesList[0], changesList[1],check);
         if (updateGlobalCPairs){
             globalReplacementMap[changesList[0]] = changesList[1];
@@ -5283,7 +5268,7 @@ void MainWindow::runGlobalReplace(QString currentFileDirectory , QVector <QStrin
     else if(noOfChangedWords > 1){
 
         globalReplacementMap = getGlobalReplacementMapFromChecklistDialog(changedWords, &replaceInAllPages);
-
+        //qDebug()<<"globalReplacementMap"<<globalReplacementMap<<endl;
         QMap<QString, QString>::iterator it;
         it = globalReplacementMap.begin();
         for (int i = 0; i < replaceInAllPages.size(); i++)
@@ -5556,7 +5541,7 @@ QMap<QString,QStringList> MainWindow::getBeforeAndAfterWords(QString fPath,QMap 
   {
       QString oldWord = grmIterator.key();
       QString newWord = grmIterator.value();
-      QRegularExpression rx("((?:[[\u0900-\u097F]+//]+[[\u0900-\u097F]+//]+){0,5}\W)( "+ oldWord + ")(\W(?:[[\u0900-\u097F]+//]+[[\u0900-\u097F]+//]+){0,5})");
+      QRegularExpression rx(".*"+oldWord+".*");
       for(int i=0;i<rx.captureCount()+1;++i)
       {
          QRegularExpressionMatchIterator match = rx.globalMatch(plain);
@@ -7179,3 +7164,5 @@ void MainWindow::on_actionFont_Color_triggered()
     charFormat.setForeground(QBrush(choosencolor));
     cursor.mergeCharFormat(charFormat);
 }
+
+
