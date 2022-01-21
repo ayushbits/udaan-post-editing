@@ -27,13 +27,16 @@ GlobalReplaceDialog::GlobalReplaceDialog(QVector <QString> replacedWords, QWidge
     setWindowTitle("Select the words you want to replace globally");
     displayOriginalList(replacedWords);
     //ui->listWidget->insertItem(,"Replacement Words");
+
     QObject::connect(ui->listWidget, SIGNAL(itemChanged(QListWidgetItem*)), this, SLOT(highlightChecked(QListWidgetItem*)));
     QObject::connect(this , SIGNAL(fetchCheckedlist(QMap<QString,QString>,  QVector<int>)), parent, SLOT(globalReplacePreviewfn(QMap<QString,QString>,QVector<int>)));
     QVBoxLayout *listLayout = new QVBoxLayout;
+
     ui->listWidget->setLayout(listLayout);
     ui->groupBox->setVisible(false);
     ui->groupBox->setLayout(vbox);
     ui->horizontalLayout_2->setAlignment(ui->groupBox, Qt::AlignTop);
+
     vbox->setAlignment(ui->groupBox, Qt::AlignTop);
     vbox->setSpacing(12);
     vbox->setMargin(12);
@@ -85,8 +88,10 @@ void GlobalReplaceDialog::displayOriginalList(QVector <QString> replacedWords){
 
         vbox->addWidget(box);
         vbox->setAlignment(box, Qt::AlignTop);
+
         //! Inserting addresses of checkboxes in the vector so that we can change the state of the same accordingly
         replaceInAllFiles_Checkboxes.push_back(box);
+
         //! Initializing the states to 0 and pushing them in the vector
         wordSelection_CheckboxesState.push_back(0);
     }
@@ -131,6 +136,7 @@ void GlobalReplaceDialog::on_applyButton_clicked()
     replace.setInformativeText("Selected words will be saved and replaced");
     QPushButton *confirmButton = replace.addButton(tr("Confirm"),QMessageBox::AcceptRole);
     replace.exec();
+
     if(replace.clickedButton() == confirmButton)
     {
       applyButtonIsClicked = true;
@@ -180,9 +186,11 @@ void GlobalReplaceDialog::leftCheckBoxStateChanged(QListWidgetItem* item)
     {
         ui->groupBox->setMaximumHeight(ui->listWidget->height());
         wordSelection_CheckboxesState[itemRow] = 0;
+
         replaceInAllFiles_Checkboxes.at(itemRow)->setCheckState(Qt::Unchecked);
         replaceInAllFiles_Checkboxes.at(itemRow)->setEnabled(false);
         replaceInAllFiles_Checkboxes.at(itemRow)->setStyleSheet("QCheckBox::indicator:unchecked {border: 0px solid white}");
+
         for (int i = 0; i < wordSelection_CheckboxesState.size(); i++)
         {
             if ( wordSelection_CheckboxesState.at(i) == 1 )
@@ -209,6 +217,7 @@ QVector<int> GlobalReplaceDialog::getStatesOfCheckboxes()
 
     qDebug() << "Before Size of leftCheckbox Vector = " << wordSelection_CheckboxesState.size();
     qDebug() << "Before Size of rightCheckbox Vector = " << replaceInAllFiles_Checkboxes.size();
+
     for (int i = 0; i < wordSelection_CheckboxesState.size(); i++)  //!Iterate over the list of word
     {
         if (wordSelection_CheckboxesState.at(i) == 1) {

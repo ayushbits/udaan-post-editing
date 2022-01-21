@@ -1,6 +1,6 @@
 /*!
 \class markRegion
-\brief The DiffView class update entries and generates image.xml files for mark region
+\brief The markRegion class update entries and generates image.xml files for mark region
        feature.
        To insert image/equation/table in the html pages
        markRegion class provides features to do so. It also keeps
@@ -26,7 +26,6 @@ extern QString gDirOneLevelUp,gDirTwoLevelUp,gCurrentPageName, gCurrentDirName;
 * \param i
 * \sa qInstallMessageHandler()
 */
-
 void markRegion::updateEntries(QDomDocument document, QString filename,QString PageNo, QString s2, int i)
 {
     qInstallMessageHandler(crashlog::myMessageHandler);
@@ -59,6 +58,7 @@ void markRegion::updateEntries(QDomDocument document, QString filename,QString P
         }
         Component = Component.nextSibling().toElement();        //! Next component
      }
+
     QFile f(filename);
     f.open(QIODevice::WriteOnly);
     QTextStream stream;
@@ -79,6 +79,7 @@ void markRegion::createImageInfoXMLFile()
 {
     QDomDocument document;
     qInstallMessageHandler(crashlog::myMessageHandler);
+
     //! Add processing instructions that are XML instructions
     QDomProcessingInstruction instruction;
     instruction = document.createProcessingInstruction("xml","version=\"1.0\" encoding=\"UTF-8\"");
@@ -93,6 +94,7 @@ void markRegion::createImageInfoXMLFile()
     QDir directory(strI);
     QStringList list1 = directory.entryList(QStringList() << "*.txt",QDir::Files);
     int counter_i = 1;
+
     for ( const auto& i : list1 )
     {
         QStringList PageNo = i.split(QRegExp("[-.]"));
