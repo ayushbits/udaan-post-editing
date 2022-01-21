@@ -1256,16 +1256,21 @@ void MainWindow::SaveFile(){
 }
 
 
-
+/*!
+ * \fn MainWindow::on_actionSave_triggered()
+ * \brief This function is called to save changes globally and can change current version also.It also update entries in timelog.json.
+ *
+ * \sa isProjectOpen(), get_version(),editDistance(), runGlobalReplace()
+ */
 void MainWindow::on_actionSave_triggered()
 {   if (!mProject.isProjectOpen())
         return;
     //! Adding entries in Timelog.json about the elapsed time
     int nMilliseconds = myTimer.elapsed();
-    gSeconds = nMilliseconds/1000;                                 //Converting milliseconds to seconds
+    gSeconds = nMilliseconds/1000;                                 //!Converting milliseconds to seconds
     QString currentVersion = mProject.get_version();
     if(mRole == "Verifier" && mRole != currentVersion)
-        currentVersion = QString::number(currentVersion.toInt() - 1);   //Version is decremented for Verifier
+        currentVersion = QString::number(currentVersion.toInt() - 1);   //!Version is decremented for Verifier
 
 //    timeLog[mRole +":"+ gCurrentPageName +":V-"+ currentVersion]=gSeconds;
     QString dateTime = QDateTime::currentDateTime().toString();
@@ -1280,7 +1285,7 @@ void MainWindow::on_actionSave_triggered()
     connect(this, &MainWindow::closeSignal, spinner, &LoadingSpinner::close);
     spinner->exec();
     QVector <QString> changedWords;
-    changedWords = editDistance(s1, s2);             // Update CPair by editdistance
+    changedWords = editDistance(s1, s2);             //! Update CPair by editdistance
     QString currentDirAbsolutePath = gDirTwoLevelUp + "/" + gCurrentDirName;
     runGlobalReplace(currentDirAbsolutePath, changedWords);
     ConvertSlpDevFlag =0;
@@ -6585,9 +6590,13 @@ void MainWindow::directoryChanged(const QString &path)
         }
     }
 }
-
+/*!
+ * \fn MainWindow::checkUnsavedWork()
+ * \brief When texbrowser is closed or application is closed then this function checks for any unsaved worked in the browser.
+ *
+ */
 bool MainWindow::checkUnsavedWork() {
-    for (int i = 0; i < ui->tabWidget_2->count(); ++i) {
+    for (int i = 0; i < ui->tabWidget_2->count(); ++i) {            //!checks for number of tabs opened in browser
         ui->tabWidget_2->setCurrentIndex(i);
         QTextBrowser *closing_browser = (QTextBrowser*)ui->tabWidget_2->widget(i);
         QString closing_browserHtml = closing_browser->toHtml();
@@ -6606,11 +6615,14 @@ bool MainWindow::checkUnsavedWork() {
 }
 
 /*!
- * \brief MainWindow::saveAllWork
+ * \fn MainWindow::saveAllWork()
+ * \brief This function is called to save all the works/changes done in text browser.
+ *
+ * \sa on_actionSave_triggered()
  */
 void MainWindow::saveAllWork()
 {
-    for (int i = 0; i < ui->tabWidget_2->count(); ++i)
+    for (int i = 0; i < ui->tabWidget_2->count(); ++i)     //!checks for number of tabs in text browser
     {
         ui->tabWidget_2->setCurrentIndex(i);
         QTextBrowser *closing_browser = (QTextBrowser*)ui->tabWidget_2->widget(i);
@@ -6630,13 +6642,17 @@ void MainWindow::saveAllWork()
 }
 
 /*!
- * \brief MainWindow::on_actionSave_All_triggered
+ * \fn MainWindow::on_actionSave_All_triggered()
+ * \brief This function is called to save all the works/changes done in text browser.
+ *
+ *\note enable when required
+ * \sa UpdateFileBrekadown(), on_actionSave_triggered()
  */
-void MainWindow::on_actionSave_All_triggered()  //enable when required
+void MainWindow::on_actionSave_All_triggered()
 {
     if(ui->tabWidget_2->count()!=0)
     {
-        for(int i=0;i<ui->tabWidget_2->count();i++)
+        for(int i=0;i<ui->tabWidget_2->count();i++)  //!Checks for tabs in text browser
         {
             ui->tabWidget_2->setCurrentIndex(i);
             UpdateFileBrekadown();

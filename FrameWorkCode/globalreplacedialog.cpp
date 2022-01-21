@@ -1,3 +1,11 @@
+/*!
+\class GlobalReplaceDialog
+\brief Globalreplacedialog provides feature to open new dialog box which
+       contains all the list of words user changed and want to replace. It
+       comes with a checkbox if user checks the checkbox then word will replaced
+       gloabally else in that page only.
+\sa getStatesOfCheckboxes(),clicked_applyButton(),fetchCheckedlist(),on_applyButton_clicked(),displayOriginalList,leftCheckBoxStateChanged,on_previewButton_clicked,on_pushButton_clicked,highlightChecked,getFilteredGlobalReplacementMap
+*/
 #include "globalreplacedialog.h"
 #include "ui_globalreplacedialog.h"
 #include <QDialogButtonBox>
@@ -7,6 +15,8 @@
 #include "globalreplaceinformation.h"
 #include <QMessageBox>
 #include "crashlog.h"
+
+//!constructer
 GlobalReplaceDialog::GlobalReplaceDialog(QVector <QString> replacedWords, QWidget *parent) :
     QDialog(parent),
     ui(new Ui::GlobalReplaceDialog)
@@ -30,6 +40,7 @@ GlobalReplaceDialog::GlobalReplaceDialog(QVector <QString> replacedWords, QWidge
    // vbox->setContentsMargins(0, 0, 0, 0);
 }
 
+//!Destructer
 GlobalReplaceDialog::~GlobalReplaceDialog()
 {
     replaceInAllFiles_Checkboxes.clear();
@@ -38,21 +49,34 @@ GlobalReplaceDialog::~GlobalReplaceDialog()
 }
 
 
+/*!
+* \fn GlobalReplaceDialog::getFilteredGlobalReplacementMap()
+* \brief Returns the list of checked words which is going to be repace globally.
+*
+*\return filteredGlobalReplacementMap
+*/
 QMap <QString, QString> GlobalReplaceDialog::getFilteredGlobalReplacementMap(){
     return this->filteredGlobalReplacementMap;
 }
 
 
+/*!
+* \fn GlobalReplaceDialog::displayOriginalList
+* \brief Displays the list of words in which user has made changes/added along with checkbox to select/deselect.
+* \param replacedWords
+*
+* \sa push_back()
+*/
 void GlobalReplaceDialog::displayOriginalList(QVector <QString> replacedWords){
     //ui->groupBox->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
-    for (int i = 0; i < replacedWords.size(); ++i){
+    for (int i = 0; i < replacedWords.size(); ++i){       //!initializes checkbox in font of every mapped word.
         QRegExp sep("\\s*=>*");
         QStringList changedList = replacedWords[i].split(sep);
         //QStringList changedList = replacedWords[i].split(" ");
         ui -> listWidget ->addItem(changedList[0]+ " -> " + changedList[1]);
 
-        // Creating & adding checkboxes in the groupbox
+        //! Creating & adding checkboxes in the groupbox
         box = new QCheckBox(this);
         box->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         box->setCheckState(Qt::Unchecked);
@@ -61,9 +85,9 @@ void GlobalReplaceDialog::displayOriginalList(QVector <QString> replacedWords){
 
         vbox->addWidget(box);
         vbox->setAlignment(box, Qt::AlignTop);
-        // Inserting addresses of checkboxes in the vector so that we can change the state of the same accordingly
+        //! Inserting addresses of checkboxes in the vector so that we can change the state of the same accordingly
         replaceInAllFiles_Checkboxes.push_back(box);
-        // Initializing the states to 0 and pushing them in the vector
+        //! Initializing the states to 0 and pushing them in the vector
         wordSelection_CheckboxesState.push_back(0);
     }
 
@@ -73,10 +97,17 @@ void GlobalReplaceDialog::displayOriginalList(QVector <QString> replacedWords){
         item = ui->listWidget->item(i);
         item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
         item->setCheckState(Qt::Unchecked);
+        //!generates signal if a checkbox is clicked.
         connect(ui->listWidget, SIGNAL(itemClicked(QListWidgetItem*)), this, SLOT(leftCheckBoxStateChanged(QListWidgetItem*)));
     }
 }
 
+/*!
+* \fn GlobalReplaceDialog::highlightChecked
+* \brief Changes color of words selected.
+* \param item
+*
+*/
 void GlobalReplaceDialog::highlightChecked(QListWidgetItem *item){
     if(item->checkState() == Qt::Checked)
         item->setBackgroundColor(QColor("#add8e6"));
@@ -84,6 +115,13 @@ void GlobalReplaceDialog::highlightChecked(QListWidgetItem *item){
         item->setBackgroundColor(QColor("#ffffff"));
 }
 
+
+/*!
+* \fn GlobalReplaceDialog::on_applyButton_clicked()
+* \brief When apply button is clicked by user after selecting words this function updates filteredglobalmap list with checked words only.
+         It also displays a confirmation message box.
+*
+*/
 void GlobalReplaceDialog::on_applyButton_clicked()
 {
     QMessageBox replace;
@@ -116,12 +154,11 @@ void GlobalReplaceDialog::on_applyButton_clicked()
 //}
 
 /*!
- * \fn "GlobalReplaceDialog::leftCheckBoxStateChanged"
- * \brief "This function is a SLOT which receives signal from listWidget when an item is selected"
- * \param "Address of QListWidgetItem is passed"
- * \return "void"
+ * \fn GlobalReplaceDialog::leftCheckBoxStateChanged
+ * \brief This function is a SLOT which receives signal from listWidget when an item is selected.
+ * \param item
+ *
 */
-
 void GlobalReplaceDialog::leftCheckBoxStateChanged(QListWidgetItem* item)
 {
     int itemRow;
@@ -160,13 +197,19 @@ void GlobalReplaceDialog::leftCheckBoxStateChanged(QListWidgetItem* item)
 }
 
 
+/*!
+* \fn GlobalReplaceDialog::getStatesOfCheckboxes()
+* \brief Returns the states of checkbox if it is checked or not.
+*
+* \return statesOfRightCheckboxes
+*/
 QVector<int> GlobalReplaceDialog::getStatesOfCheckboxes()
 {
     QVector<int> statesOfRightCheckboxes;
 
     qDebug() << "Before Size of leftCheckbox Vector = " << wordSelection_CheckboxesState.size();
     qDebug() << "Before Size of rightCheckbox Vector = " << replaceInAllFiles_Checkboxes.size();
-    for (int i = 0; i < wordSelection_CheckboxesState.size(); i++)
+    for (int i = 0; i < wordSelection_CheckboxesState.size(); i++)  //!Iterate over the list of word
     {
         if (wordSelection_CheckboxesState.at(i) == 1) {
             if (replaceInAllFiles_Checkboxes.at(i)->checkState() == Qt::Checked)
@@ -179,12 +222,25 @@ QVector<int> GlobalReplaceDialog::getStatesOfCheckboxes()
     return statesOfRightCheckboxes;
 }
 
+
+/*!
+* \fn GlobalReplaceDialog::clicked_applyButton()
+* \brief Returns apply button clicked or not status.
+*
+* \return applyButtonIsClicked
+*/
 bool GlobalReplaceDialog::clicked_applyButton()
 {
     return applyButtonIsClicked;
 }
 
 
+/*!
+* \fn GlobalReplaceDialog::on_previewButton_clicked
+* \brief This function emits signal containg list of pages containing changed words.
+*
+*\sa getStatesOfCheckboxes(),fetchCheckedlist()
+*/
 void GlobalReplaceDialog::on_previewButton_clicked()
 {
     QMap <QString, QString> obj;
@@ -208,6 +264,12 @@ void GlobalReplaceDialog::on_previewButton_clicked()
     emit fetchCheckedlist(obj,allPages);
 }
 
+
+/*!
+* \fn GlobalReplaceDialog::on_pushButton_clicked()
+* \brief This function is called by UI when pushed button is clicked.
+*
+*/
 void GlobalReplaceDialog::on_pushButton_clicked()
 {
     globalReplaceInformation info(this);
