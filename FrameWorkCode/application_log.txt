@@ -3196,3 +3196,15 @@ Username:asr16
 Application Log:
 Debug: "/home/asr16/Downloads/en-hi/image.xml" (markRegion.cpp)
 Warning:   OpenType support missing for "Ubuntu", script 11 ()
+
+OpenOCRCorrect Application Log
+Date: 24 Jan 2022 @ 11:57:27
+Username:aman
+
+Application Log:
+
+OpenOCRCorrect Application Log
+Date: 25 Jan 2022 @ 10:25:37
+Username:aman
+
+Application Log:

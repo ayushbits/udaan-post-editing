@@ -77,6 +77,8 @@ public:
     };
 
     void load_data();
+    QTextBrowser * curr_browser = nullptr;
+
 
 private slots:
     void createActions();
@@ -403,15 +405,15 @@ private:
 
     bool mExitStatus = false;
     QString mRole;
-    bool isVerifier;
+
     Ui::MainWindow *ui;
     Project mProject;
-    QString mFilename;
+
     QString mFilenameImage;
     QString current_folder;
-    QString currentTabPageName="";
+
     int currentTabIndex;
-    QTextBrowser * curr_browser = nullptr;
+
     QGraphicsScene * graphic =nullptr;
     Graphics_view_zoom * z = nullptr;
     QModelIndex curr_idx;
@@ -420,7 +422,7 @@ private:
     QFileSystemWatcher watcher;
     QGraphicsRectItem* item1;
     QGraphicsRectItem* crop_rect;
-    QString s1, s2;
+
     int NextPrevTrig = 0;
     bool isRecentProjclick =false;
     QString RecentProjFile;

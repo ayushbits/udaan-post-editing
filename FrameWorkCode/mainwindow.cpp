@@ -118,7 +118,10 @@ QString branchName;
 QMap<QString, QString> globallyReplacedWords;
 
 QList<QString> filesChangedUsingGlobalReplace;
-
+bool isVerifier;
+QString mFilename;
+QString s1, s2;
+QString currentTabPageName="";
 
 //Constructor
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent),ui(new Ui::MainWindow)
@@ -1017,244 +1020,244 @@ void MainWindow::AddRecentProjects()
  * \brief This function will save any changes made in the current file.
  * \sa SaveTimeLog(), DisplayTimeLog()
 */
-bool ConvertSlpDevFlag = 0;
 
-void MainWindow::SaveFile(){
-    //SaveTimeLog();
-    DisplayTimeLog();
-    QVector <QString> changedWords;
-    //! When changes are made by the verifier the following values are also updated.
-    if(isVerifier)
-    {
-        gSaveTriggered = 1;
-        on_viewComments_clicked();
-        gSaveTriggered = 0;
-        updateAverageAccuracies();
-    }
-    ConvertSlpDevFlag =1;
+//bool ConvertSlpDevFlag = 0;
 
-    /*
-     * If file name is \value untitled on_actionSave_As_triggered is called.
-     * Otherwise we will update the changes in the existing saved file.
-    */
-    if (mFilename=="Untitled")
-    {
-        on_actionSave_As_triggered();
-    }
-    else
-    {
-        QString tempPageName = gCurrentPageName;
+//void MainWindow::SaveFile(){
+//    //SaveTimeLog();
+//    DisplayTimeLog();
+//    QVector <QString> changedWords;
+//    //! When changes are made by the verifier the following values are also updated.
+//    if(isVerifier)
+//    {
+//        gSaveTriggered = 1;
+//        on_viewComments_clicked();
+//        gSaveTriggered = 0;
+//        updateAverageAccuracies();
+//    }
+//    ConvertSlpDevFlag =1;
 
-        //! Selecting the location where file is to be saved
-        QString changefiledir = filestructure_fw[gCurrentDirName];
-        QString localFilename = gDirTwoLevelUp + "/" +changefiledir +"/" + tempPageName;
+//    /*
+//     * If file name is \value untitled on_actionSave_As_triggered is called.
+//     * Otherwise we will update the changes in the existing saved file.
+//    */
+//    if (mFilename=="Untitled")
+//    {
+//        on_actionSave_As_triggered();
+//    }
+//    else
+//    {
+//        QString tempPageName = gCurrentPageName;
 
-        localFilename.replace(".txt",".html");
+//        //! Selecting the location where file is to be saved
+//        QString changefiledir = filestructure_fw[gCurrentDirName];
+//        QString localFilename = gDirTwoLevelUp + "/" +changefiledir +"/" + tempPageName;
 
-        //! Don't create and save new file if output file already exists.
-        if (gCurrentDirName == "Inds" || isVerifier && gCurrentDirName == "CorrectorOutput")
-        {
-            QFileInfo check_file(localFilename);
-            if (check_file.exists() && check_file.isFile())
-            {
-                emit closeSignal();
-                return ;
-            }
-        }
+//        localFilename.replace(".txt",".html");
 
-        QFile sFile(localFilename);
+//        //! Don't create and save new file if output file already exists.
+//        if (gCurrentDirName == "Inds" || isVerifier && gCurrentDirName == "CorrectorOutput")
+//        {
+//            QFileInfo check_file(localFilename);
+//            if (check_file.exists() && check_file.isFile())
+//            {
+//                emit closeSignal();
+//                return ;
+//            }
+//        }
 
-        QTextCharFormat fmt;
-        //fmt.setForeground(QBrush(QColor(0,0,0)));           //Setting foreground brush to render text
-        QTextCursor cursor = curr_browser->textCursor();
-        cursor.beginEditBlock();
-        cursor.select(QTextCursor::Document);
-        cursor.mergeCharFormat(fmt);
-        cursor.endEditBlock();
+//        QFile sFile(localFilename);
 
-        QString output = curr_browser->toHtml();
+//        QTextCharFormat fmt;
+//        //fmt.setForeground(QBrush(QColor(0,0,0)));           //Setting foreground brush to render text
+//        QTextCursor cursor = curr_browser->textCursor();
+//        cursor.beginEditBlock();
+//        cursor.select(QTextCursor::Document);
+//        cursor.mergeCharFormat(fmt);
+//        cursor.endEditBlock();
 
-        QTextDocument doc;
-        doc.setHtml( gInitialTextHtml[currentTabPageName] );
-        s1 = doc.toPlainText();          //before Saving
-        s2 = curr_browser->toPlainText();       //after Saving
+//        QString output = curr_browser->toHtml();
 
-        changedWords = editDistance(s1, s2);             // Update CPair by editdistance
-        QVectorIterator<QString> i(changedWords);
-        while (i.hasNext())
-            qDebug() << i.next()<<endl;
-        //! Do commit when there are some changes in previous and new html file on the basis of editdistance.
-        if(changedWords.size())
-        {
-            if(mProject.get_version().toInt())     //Check version number
-            {
-                QString commit_msg = "Corrector Turned in Version: " + mProject.get_version();
-                //!Check commit condition
-                if(!mProject.commit(commit_msg.toStdString()))
-                {
-                    //cout<<"Commit Unsuccessful"<<endl;
-                    emit closeSignal();
-                    return;
-                }
-                else
-                {
-                    mProject.commit(commit_msg.toStdString());
-                    //cout<<"Commit Successful"<<endl;
-                }
-            }
-        }
+//        QTextDocument doc;
+//        doc.setHtml( gInitialTextHtml[currentTabPageName] );
+//        s1 = doc.toPlainText();          //before Saving
+//        s2 = curr_browser->toPlainText();       //after Saving
 
-        //CPair.insert(CPair_editDis.begin(), CPair_editDis.end());
-        //! Enters entries in CPairs through CPair_editDis; allows multiple entries for a incorrent word entry
-        for(auto elem : CPair_editDis)
-        {
-           std::cerr << elem.first << " " << elem.second << "\n";
-           std::cerr << toslp1(elem.first) << " " << toslp1(elem.second) << "\n";
-           //CPair.insert(make_pair(toslp1(elem.first), toslp1(elem.second)));
-           if ( CPairs.find(toslp1(elem.first)) != CPairs.end())
-           {
-               std::set< std::string>& s_ref = CPairs[toslp1(elem.first)];
-               s_ref.insert(toslp1(elem.second));
-           }
-           else
-           {
-               CPairs[toslp1(elem.first)].insert(toslp1(elem.second));
-           }
-        }
+//        changedWords = editDistance(s1, s2);             // Update CPair by editdistance
+//        QVectorIterator<QString> i(changedWords);
+//        while (i.hasNext())
+//            qDebug() << i.next()<<endl;
+//        //! Do commit when there are some changes in previous and new html file on the basis of editdistance.
+//        if(changedWords.size())
+//        {
+//            if(mProject.get_version().toInt())     //Check version number
+//            {
+//                QString commit_msg = "Corrector Turned in Version: " + mProject.get_version();
+//                //!Check commit condition
+//                if(!mProject.commit(commit_msg.toStdString()))
+//                {
+//                    //cout<<"Commit Unsuccessful"<<endl;
+//                    emit closeSignal();
+//                    return;
+//                }
+//                else
+//                {
+//                    mProject.commit(commit_msg.toStdString());
+//                    //cout<<"Commit Successful"<<endl;
+//                }
+//            }
+//        }
 
-        //! Reflecting CPairs entries in the file /Dicts/CPair; Making it dynamic
-        QString filename12 = mProject.GetDir().absolutePath() + "/Dicts/" + "CPair";
-        QFile file12(filename12);
-        if(!file12.exists())
-        {
-           qDebug() << "No exist file "<<filename12;
-        }
-        else
-        {
-           qDebug() << filename12<<"exists";
-        }
+//        //CPair.insert(CPair_editDis.begin(), CPair_editDis.end());
+//        //! Enters entries in CPairs through CPair_editDis; allows multiple entries for a incorrent word entry
+//        for(auto elem : CPair_editDis)
+//        {
+//           std::cerr << elem.first << " " << elem.second << "\n";
+//           std::cerr << toslp1(elem.first) << " " << toslp1(elem.second) << "\n";
+//           //CPair.insert(make_pair(toslp1(elem.first), toslp1(elem.second)));
+//           if ( CPairs.find(toslp1(elem.first)) != CPairs.end())
+//           {
+//               std::set< std::string>& s_ref = CPairs[toslp1(elem.first)];
+//               s_ref.insert(toslp1(elem.second));
+//           }
+//           else
+//           {
+//               CPairs[toslp1(elem.first)].insert(toslp1(elem.second));
+//           }
+//        }
 
-        //! Insert entries in Correct Formatting Hello (/t) hi,(comma)hiii
-        if (file12.open(QIODevice::ReadWrite  | QIODevice::Text | QIODevice::Append))
-        {
-            QTextStream out(&file12);
-            out.setCodec("UTF-8");
-            map<string, set<string>>::iterator itr;
-            set<string>::iterator set_it;
+//        //! Reflecting CPairs entries in the file /Dicts/CPair; Making it dynamic
+//        QString filename12 = mProject.GetDir().absolutePath() + "/Dicts/" + "CPair";
+//        QFile file12(filename12);
+//        if(!file12.exists())
+//        {
+//           qDebug() << "No exist file "<<filename12;
+//        }
+//        else
+//        {
+//           qDebug() << filename12<<"exists";
+//        }
 
-            for (itr = CPairs.begin(); itr != CPairs.end(); ++itr)
-            {
-                out <<  QString::fromStdString(toDev(itr->first)) << '\t';
-                for (set_it = itr->second.begin(); set_it != itr->second.end(); ++set_it)
-                {
-                    if(set_it != prev(itr->second.end()))
-                    {
-                        out << QString::fromStdString(toDev(*set_it)) << ",";
-                    }
-                    else {
-                        out << QString::fromStdString(toDev(*set_it));
-                    }
+//        //! Insert entries in Correct Formatting Hello (/t) hi,(comma)hiii
+//        if (file12.open(QIODevice::ReadWrite  | QIODevice::Text | QIODevice::Append))
+//        {
+//            QTextStream out(&file12);
+//            out.setCodec("UTF-8");
+//            map<string, set<string>>::iterator itr;
+//            set<string>::iterator set_it;
 
-                }
-                out <<"\n";
-            }
-             file12.close();
-        }
+//            for (itr = CPairs.begin(); itr != CPairs.end(); ++itr)
+//            {
+//                out <<  QString::fromStdString(toDev(itr->first)) << '\t';
+//                for (set_it = itr->second.begin(); set_it != itr->second.end(); ++set_it)
+//                {
+//                    if(set_it != prev(itr->second.end()))
+//                    {
+//                        out << QString::fromStdString(toDev(*set_it)) << ",";
+//                    }
+//                    else {
+//                        out << QString::fromStdString(toDev(*set_it));
+//                    }
 
-        //! If file is in write-only mode
-        if(sFile.open(QFile::WriteOnly))
-        {
-            QTextStream out(&sFile);
-            out.setCodec("UTF-8");          //Sets the codec for this stream
-            gInitialTextHtml[currentTabPageName] = output;
-            output = "<style> body{ width: 21cm; height: 29.7cm; margin: 30mm 45mm 30mm 45mm; } </style>" + output;     //Formatting the output using CSS <style> tag
-            out << output;
-            sFile.flush();      //Flushes any buffered data waiting to be written in the \a sFile
-            sFile.close();      //Closing the file
-        }
+//                }
+//                out <<"\n";
+//            }
+//             file12.close();
+//        }
 
-        //! Converting html output into plain text.
-        QTextDocumentFragment qtextdocfragment;
-        QString plain = qtextdocfragment.fromHtml(output).toPlainText();
+//        //! If file is in write-only mode
+//        if(sFile.open(QFile::WriteOnly))
+//        {
+//            QTextStream out(&sFile);
+//            out.setCodec("UTF-8");          //Sets the codec for this stream
+//            gInitialTextHtml[currentTabPageName] = output;
+//            output = "<style> body{ width: 21cm; height: 29.7cm; margin: 30mm 45mm 30mm 45mm; } </style>" + output;     //Formatting the output using CSS <style> tag
+//            out << output;
+//            sFile.flush();      //Flushes any buffered data waiting to be written in the \a sFile
+//            sFile.close();      //Closing the file
+//        }
 
-        std::stringstream ss(plain.toStdString());
-        std::string to;
-        //! Appending the plain text in QVector<QString> object.
-        QVector<QString> s;
-        if (plain != NULL)
-        {
-            while(std::getline(ss,to,'\n'))
-            {
-                QString qstr = QString::fromStdString(to);
-                s.append(qstr);
-            }
-        }
+//        //! Converting html output into plain text.
+//        QTextDocumentFragment qtextdocfragment;
+//        QString plain = qtextdocfragment.fromHtml(output).toPlainText();
 
-        //! Inserting string values in \a qjsonobj.
-        QJsonObject qjsonobj;
-        for(int i = 0;i < s.size(); i++)
-        {
-            QString z = QString::number(i);
-            qjsonobj.insert(z, QJsonValue(s[i]));
-        }
-        int len = qjsonobj.length();
+//        std::stringstream ss(plain.toStdString());
+//        std::string to;
+//        //! Appending the plain text in QVector<QString> object.
+//        QVector<QString> s;
+//        if (plain != NULL)
+//        {
+//            while(std::getline(ss,to,'\n'))
+//            {
+//                QString qstr = QString::fromStdString(to);
+//                s.append(qstr);
+//            }
+//        }
 
-        localFilename.replace(".html",".json");         //Replacing extension of file from .html to .json
-        QFile sFile2(localFilename);
+//        //! Inserting string values in \a qjsonobj.
+//        QJsonObject qjsonobj;
+//        for(int i = 0;i < s.size(); i++)
+//        {
+//            QString z = QString::number(i);
+//            qjsonobj.insert(z, QJsonValue(s[i]));
+//        }
+//        int len = qjsonobj.length();
 
-        //! Sets codec value and then adding values in file
-        if(sFile2.open(QIODevice::WriteOnly | QIODevice::Text))
-        {
-            QTextStream out(&sFile2);
-            out.setCodec("UTF-8");
-            out << "{\n";
-            for(int x = 0; x<len; x++)
-            {
-                QString z = QString::number(x);
-                out << "\"" << x << "\"" << ":" << "\"" << qjsonobj[z].toString() << "\"" <<","<< '\n';
-            }
-            out << "}";
+//        localFilename.replace(".html",".json");         //Replacing extension of file from .html to .json
+//        QFile sFile2(localFilename);
 
-            sFile2.flush();
-            sFile2.close();
-        }
+//        //! Sets codec value and then adding values in file
+//        if(sFile2.open(QIODevice::WriteOnly | QIODevice::Text))
+//        {
+//            QTextStream out(&sFile2);
+//            out.setCodec("UTF-8");
+//            out << "{\n";
+//            for(int x = 0; x<len; x++)
+//            {
+//                QString z = QString::number(x);
+//                out << "\"" << x << "\"" << ":" << "\"" << qjsonobj[z].toString() << "\"" <<","<< '\n';
+//            }
+//            out << "}";
 
-        //! Set Inds file readonly after saving - Corrector mode
-        if (!isVerifier && gCurrentDirName == "Inds")
-        {
-            if(QFile::exists(localFilename))
-            {
-                curr_browser->setReadOnly(true);
-            }
+//            sFile2.flush();
+//            sFile2.close();
+//        }
 
-        }
+//        //! Set Inds file readonly after saving - Corrector mode
+//        if (!isVerifier && gCurrentDirName == "Inds")
+//        {
+//            if(QFile::exists(localFilename))
+//            {
+//                curr_browser->setReadOnly(true);
+//            }
 
-        //! Set Inds and CorrectorOutput files readonly after generating output file - Verifier mode
-        if (isVerifier && (gCurrentDirName == "Inds" || gCurrentDirName == "CorrectorOutput"))
-        {
-            if(QFile::exists(localFilename))
-            {
-                QString Inds_file = gCurrentPageName;
-                Inds_file.replace(".html", ".txt");
-                QString Corr_file = Inds_file;
-                Corr_file.replace(".txt", ".html");
-                for (int i = 0; i < ui->tabWidget_2->count(); i++)
-                {
-                    QString tab_name = ui->tabWidget_2->tabText(i);
-                    if (tab_name == Inds_file || tab_name == Corr_file)
-                    {
-                        auto b = (QTextBrowser*)ui->tabWidget_2->widget(i);
-                        b->setReadOnly(true);
-                    }
-                }
-            }
-        }
-    }
+//        }
 
-    emit closeSignal();
+//        //! Set Inds and CorrectorOutput files readonly after generating output file - Verifier mode
+//        if (isVerifier && (gCurrentDirName == "Inds" || gCurrentDirName == "CorrectorOutput"))
+//        {
+//            if(QFile::exists(localFilename))
+//            {
+//                QString Inds_file = gCurrentPageName;
+//                Inds_file.replace(".html", ".txt");
+//                QString Corr_file = Inds_file;
+//                Corr_file.replace(".txt", ".html");
+//                for (int i = 0; i < ui->tabWidget_2->count(); i++)
+//                {
+//                    QString tab_name = ui->tabWidget_2->tabText(i);
+//                    if (tab_name == Inds_file || tab_name == Corr_file)
+//                    {
+//                        auto b = (QTextBrowser*)ui->tabWidget_2->widget(i);
+//                        b->setReadOnly(true);
+//                    }
+//                }
+//            }
+//        }
+//    }
 
-}
+//    emit closeSignal();
 
+//}
 
 /*!
  * \fn MainWindow::on_actionSave_triggered()
