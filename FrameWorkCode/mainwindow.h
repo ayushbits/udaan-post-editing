@@ -74,15 +74,15 @@ public:
     }
     QTextBrowser * getCurrentBrowser() {
         return curr_browser;
-
-
-
-
     };
 
     void load_data();
 
+    void on_actionLoad_Next_Page_triggered();
 
+    void on_actionLoad_Prev_Page_triggered();
+
+    void reLoadTabWindow();
 
 private slots:
     void createActions();
@@ -116,11 +116,7 @@ private slots:
 
     void translate_replace(QAction*);
 
-    void on_actionLoad_Next_Page_triggered();
-
-    void on_actionLoad_Prev_Page_triggered();
-
-    void SaveFile();
+//    void SaveFile();
 
     void on_actionLoadGDocPage_triggered();
 
@@ -184,8 +180,6 @@ private slots:
     void on_actionHindi_triggered();
 
     void on_actionEnglish_triggered();
-
-    void on_actionBold_triggered();
 
     void on_actionLeftAlign_triggered();
 
@@ -327,6 +321,10 @@ private slots:
 
     void saveAllWork();
 
+    void readSettings();
+
+    void writeSettings();
+
     void setMFilename( QString );
 
     void on_pushButton_clicked();
@@ -376,7 +374,7 @@ private slots:
 
     void zoom_slider_moved(int value);
 
-    void zoomedUsingScroll();
+    void zoomedUsingScroll(); // Slot for signal zoomed() emitted from zoom.cpp
 
     void on_actionUndo_Global_Replace_triggered();
 
@@ -394,10 +392,34 @@ private slots:
 
     QMap<QString,QStringList> getBeforeAndAfterWords(QString fPath,QMap <QString, QString> globalReplacementMap);
 
+    //QMap<QString,QStringList> getBeforeGlobalReplaceSentences(QString fPath,QMap <QString, QString> globalReplacementMap);
+
+    //QMap<QString,QStringList> getAfterGlobalReplaceSentences(QString fPath,QMap <QString, QString> globalReplacementMap);
+
+
     void on_actionUpload_triggered();
 
+    void on_justify_triggered();
+
+    void on_actionFont_Color_triggered();
+
+    void on_actionBold_triggered();
+
+    void SaveFile_GUI_1();
+
+    void SaveFile_GUI_2();
+
+    void GlobalReplace();
+
+    void stopSpinning();
+
+    void on_lineEditSearch_textChanged(const QString &arg1);
+
+public slots:
+    void SaveFile_Backend();
+
 private:
-    markRegion objectMarkRegion;
+
     bool mExitStatus = false;
     QString mRole;
     bool isVerifier;
@@ -421,6 +443,7 @@ private:
     int NextPrevTrig = 0;
     bool isRecentProjclick =false;
     QString RecentProjFile;
+    LoadingSpinner *spinner;
 };
 
 #endif // MAINWINDOW_H

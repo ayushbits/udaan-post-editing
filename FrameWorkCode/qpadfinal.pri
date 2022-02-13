@@ -26,6 +26,7 @@ HEADERS += ./Filters.h \
     $$PWD/SimpleMail/serverreply.h \
     $$PWD/SimpleMail/serverreply_p.h \
     $$PWD/SimpleMail/smtpexports.h \
+    $$PWD/crashlog.h \
     $$PWD/editdistance.h \
     $$PWD/loadingspinner.h \
     $$PWD/markRegion.h \
@@ -34,6 +35,7 @@ HEADERS += ./Filters.h \
     $$PWD/globalreplacedialog.h \
     $$PWD/ui_shortcutguidedialog.h \
     $$PWD/undoglobalreplace.h \
+    $$PWD/worker.h \
     ./Project.h \
     ./TreeItem.h \
     ./tesseract/apitypes.h \
@@ -73,7 +75,7 @@ HEADERS += ./Filters.h \
     ./interndiffview.h \
     ./loginpageview.h \
     ./mainwindow.h \
-    ./qcustomplot.h \
+#    ./qcustomplot.h \
     ./resizeimageview.h \
     ./zoom.h \
     ./ProjectWizard.h \
@@ -95,13 +97,19 @@ SOURCES += ./DiffView.cpp \
     $$PWD/SimpleMail/sender.cpp \
     $$PWD/SimpleMail/server.cpp \
     $$PWD/SimpleMail/serverreply.cpp \
+    $$PWD/crashlog.cpp \
+    $$PWD/eddis.cpp \
     $$PWD/editdistance.cpp \
     $$PWD/loadingspinner.cpp \
     $$PWD/markRegion.cpp \
+    $$PWD/meanStdPage.cpp \
     $$PWD/shortcutguidedialog.cpp \
+    $$PWD/slpNPatternDict.cpp \
     $$PWD/textfinder.cpp \
     $$PWD/globalreplacedialog.cpp \
+    $$PWD/trieEditdis.cpp \
     $$PWD/undoglobalreplace.cpp \
+    $$PWD/worker.cpp \
     ./Filters.cpp \
     ./Project.cpp \
     ./ProjectHierarchyWindow.cpp \
@@ -116,7 +124,7 @@ SOURCES += ./DiffView.cpp \
     ./loginpageview.cpp \
     ./main.cpp \
     ./mainwindow.cpp \
-    ./qcustomplot.cpp \
+#    ./qcustomplot.cpp \
     ./resizeimageview.cpp \
     ./zoom.cpp \
     ./ProjectWizard.cpp \

@@ -1,3 +1,7 @@
+/*!
+  \class InternDiffView
+  \brief The InternDiffView class contains function that allows comparision of OCR image, Initial text and corrector output text
+*/
 #include "interndiffview.h"
 #include "ui_interndiffview.h"
 #include "zoom.h"
@@ -6,20 +10,28 @@
 #include <qstring.h>
 #include <Project.h>
 #include <QMessageBox>
+#include <QGraphicsRectItem>
 
+/*!
+ * \fn InternDiffView::InternDiffView
+ * \brief Constructor for interndiffview
+ * \brief Checks if the image file exists, if yes then loads the file to graphics view object and
+ * sets zoom configuration and sets relevant labels. Throws error message if file does not exists
+*/
 InternDiffView::InternDiffView( QWidget *parent, QString page, QString fpath)
-	: QMainWindow(parent)
+    : QMainWindow(parent)
 {
     gDirTwoLevelUp = fpath;
     pageNo = page.toStdString();
     ui = new Ui::InternDiffView();
     ui->setupUi(this);
-
+    //ui->setstyleSheet
     //!check if file exists
-    QFile fcorrector(gDirTwoLevelUp+ "/VerifierOutput/"+ page );
+    QFile fcorrector(gDirTwoLevelUp+ "/CorrectorOutput/"+ page );
 
      if(fcorrector.exists())
      {
+       isValidFile = true;
        Load_comparePage(page.toStdString());
 
        ui->current->setHtml(html1);
@@ -30,10 +42,22 @@ InternDiffView::InternDiffView( QWidget *parent, QString page, QString fpath)
        ui->graphicsView->setScene(scene);
        ui->graphicsView->adjustSize();
        ui->graphicsView->fitInView(scene->itemsBoundingRect(), Qt::KeepAspectRatio);
-       Graphics_view_zoom* z = new Graphics_view_zoom(ui->graphicsView);
+       z = new Graphics_view_zoom(ui->graphicsView, scene,400);
+       ui->horizontalSlider->setMinimum(0);
+       ui->horizontalSlider->setMaximum(400);
+       ui->horizontalSlider->setValue(200);
+       ui->zoom_level_value->setText("100%");
+
        z->set_modifiers(Qt::NoModifier);
        z->gentle_zoom(30);
-
+       z->zoom_level = 200;
+       auto crop_rect = new QGraphicsRectItem(0, 0, 1, 1);
+       scene->addItem(crop_rect);
+       //connect(z, SIGNAL(zoomed()), this, SLOT(zoomedUsingScroll()));
+       connect(ui->horizontalSlider, SIGNAL(valueChanged(int)), this, SLOT(zoom_slider_valueChanged(int)));
+       connect(ui->horizontalSlider, SIGNAL(sliderMoved(int)), this, SLOT(zoom_slider_moved(int)));
+      // connect(ui->zoom_In_Button, SIGNAL(clicked()), this, SLOT(zoom_slider_moved(int)));
+       //connect(z, SIGNAL(zoomed()), this, SLOT(zoomedUsingScroll()));
        QString label1 = ui->InternLabel->text();
        QString acc = QString::number(correctorChangesPerc,'f',2) + "%";
        label1.append(acc+"%");
@@ -41,14 +65,33 @@ InternDiffView::InternDiffView( QWidget *parent, QString page, QString fpath)
      }
      else{
         QMessageBox::information(0, "Error", "File Doesn't Exist");
+        isValidFile = false;
      }
 }
 
 InternDiffView::~InternDiffView()
 {
-	delete ui;
+    delete ui;
 }
 
+/*!
+ * \fn InternDiffView::validFilePath
+ * \brief returns whether the file path is valid or invalid in a boolean variable
+*/
+bool InternDiffView::validFilePath()
+{
+    return isValidFile;
+}
+
+/*!
+ * \fn InternDiffView::Load_comparePage
+ * \param page
+ * \brief For the currently opened page, the function fetches - corresponding image file, initial text and corrector text
+ *  and produces a final color coded text representing changes. The metrics are also calculated such
+ *  as change percentage and accuracy.
+ *
+ * \sa LevenshteinWithGraphemes(),GetGraphemesCount(), diff_main(), diff_prettyHtml()
+ */
 void InternDiffView::Load_comparePage(string page)
 {
 
@@ -215,6 +258,10 @@ void InternDiffView::Load_comparePage(string page)
   }
 }
 
+/*!
+ * \fn InternDiffView::UpdateUI
+ * \brief It updates the content text and calculated metrics from Load_comparePage to the UI
+ */
 void InternDiffView::Update_UI()
 {
     //!Load Image
@@ -230,7 +277,13 @@ void InternDiffView::Update_UI()
     ui->ocroutput->setHtml(html2);
 }
 
-
+/*!
+ * \fn InterDiffView::on_NextButton_clicked
+ * \brief It re-loads the compare window when next button is clicked and updates the text and metrics for
+ * that page respectively.
+ *
+ * \sa Load_comparePage(), Update_UI()
+ */
 void InternDiffView::on_NextButton_clicked()
 {
    //! Extract page number from the localFilename
@@ -242,12 +295,12 @@ void InternDiffView::on_NextButton_clicked()
 
    //!check if file exists
    string pages = pageNo;
-   pages.replace(loc,no.size(),to_string(stoi(no) + 1));
+   pages.replace(loc,no.size(),to_string(stoi(no) + 1)); //Increment the page number
    QFile fcorrector(gDirTwoLevelUp+ "/CorrectorOutput/"+ QString::fromStdString(pages) );
 
     if(fcorrector.exists())
     {
-      pageNo.replace(loc,no.size(),to_string(stoi(no) + 1));
+      pageNo.replace(loc,no.size(),to_string(stoi(no) + 1)); //Increment the page number
       Load_comparePage(pageNo);
       Update_UI();
     }
@@ -256,6 +309,12 @@ void InternDiffView::on_NextButton_clicked()
     }
 }
 
+/*!
+ * \fn InternDiffView::on_PrevButton_clicked
+ * \brief It re-loads the compare window when previous button is clicked and updates the text and metrics for
+ * that page respectively.
+ * \sa Load_comparePage(), Update_UI()
+ */
 void InternDiffView::on_prevButton_clicked()
 {
     //! Extract page number from the localFilename
@@ -267,12 +326,12 @@ void InternDiffView::on_prevButton_clicked()
 
     //!check if file exists
     string pages = pageNo;
-    pages.replace(loc,no.size(),to_string(stoi(no) - 1));
+    pages.replace(loc,no.size(),to_string(stoi(no) - 1)); //decrement the page number
     QFile fcorrector(gDirTwoLevelUp+ "/CorrectorOutput/"+ QString::fromStdString(pages) );
 
      if(fcorrector.exists())
      {
-       pageNo.replace(loc,no.size(),to_string(stoi(no) - 1));
+       pageNo.replace(loc,no.size(),to_string(stoi(no) - 1)); //decrement the page number
        Load_comparePage(pageNo);
        Update_UI();
      }
@@ -282,3 +341,45 @@ void InternDiffView::on_prevButton_clicked()
 }
 
 
+
+void InternDiffView::on_horizontalSlider_sliderMoved(int value)
+{
+    if (value % 10 != 0) {
+        value = (value / 10)*10 + 10;
+    }
+    double zoomFactor;
+    if (value > z->zoom_level) {
+        zoomFactor = 1 + ((value - z->zoom_level) / 100.0);
+    }
+    else if (value < z->zoom_level) {
+        zoomFactor = 1 - ((z->zoom_level - value) / 100.0);
+    }
+    else return;
+
+    z->gentle_zoom(zoomFactor);
+    ui->horizontalSlider->setValue(value);
+}
+
+
+void InternDiffView::on_zoom_In_Button_clicked()
+{
+    if (z)
+        z->gentle_zoom(z->getDefaultZoomInFactor());
+    int x= int(z->zoom_level)/2;
+    ui->zoom_level_value->setText(QString::number(x)+ "%");
+    ui->horizontalSlider->setValue(x*2);
+}
+
+void InternDiffView::on_zoom_Out_Button_clicked()
+{
+    if (z)
+        z->gentle_zoom(z->getDefaultZoomOutFactor());
+    int x= int(z->zoom_level)/2;
+    ui->zoom_level_value->setText(QString::number(x)+ "%");
+    ui->horizontalSlider->setValue(x*2);
+}
+
+void InternDiffView::on_horizontalSlider_valueChanged(int value)
+{   int x= int(z->zoom_level)/2;
+    ui->zoom_level_value->setText(QString::number(x)+ "%");
+}

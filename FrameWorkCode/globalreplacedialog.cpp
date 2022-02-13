@@ -6,14 +6,14 @@
 #include "ui_globalreplacepreview.h"
 #include "globalreplaceinformation.h"
 #include <QMessageBox>
-
+#include "crashlog.h"
 GlobalReplaceDialog::GlobalReplaceDialog(QVector <QString> replacedWords, QWidget *parent) :
     QDialog(parent),
     ui(new Ui::GlobalReplaceDialog)
 {
 
     ui->setupUi(this);
-
+    qInstallMessageHandler(crashlog::myMessageHandler);
     setWindowTitle("Select the words you want to replace globally");
     displayOriginalList(replacedWords);
     //ui->listWidget->insertItem(,"Replacement Words");
@@ -88,6 +88,7 @@ void GlobalReplaceDialog::on_applyButton_clicked()
 {
     QMessageBox replace;
     replace.setWindowTitle("Save and Replace");
+    replace.setWindowFlags(Qt::CustomizeWindowHint|Qt::WindowTitleHint);
     replace.setIcon(QMessageBox::Question);
     replace.setInformativeText("Selected words will be saved and replaced");
     QPushButton *confirmButton = replace.addButton(tr("Confirm"),QMessageBox::AcceptRole);
@@ -99,7 +100,7 @@ void GlobalReplaceDialog::on_applyButton_clicked()
 
       foreach (QListWidgetItem *item, items){
           if(item->checkState() == Qt::Checked){
-              QRegExp sep("\\s*->*");
+              QRegExp sep("\\s* -> *");
               QStringList string = item->text().split(sep);
               //QStringList string = item->text().split(" ");
               this->filteredGlobalReplacementMap[string[0]] = string[1];

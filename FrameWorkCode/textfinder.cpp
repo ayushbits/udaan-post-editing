@@ -12,12 +12,15 @@
 #include "ui_textfinder.h"
 #include <QDebug>
 #include "mainwindow.h"
+#include "slpNPatternDict.h"
 #include <QString>
 #include <string>
+#include <QMessageBox>
 
 using namespace std;
 extern string toslp1(string s);
 extern string toDev(string s);
+extern QString gDirOneLevelUp,gDirTwoLevelUp,gCurrentPageName, gCurrentDirName;
 
 TextFinder *TextFinder::textFinder = 0;
 TextFinder::TextFinder(QWidget *parent) :
@@ -55,15 +58,23 @@ TextFinder* TextFinder::openFindAndReplace(QWidget *parent) {
  */
 void TextFinder::on_findNextButton_clicked()
 {
-    QString searchString = ui->findLineEdit->text();
+    QRegExp searchExpr = QRegExp(ui->findLineEdit->text());
     QTextBrowser *curr_browser = ((MainWindow *)(parent()))->getCurrentBrowser();   //getCurrentBrowser() returns the current QTextBrower
+    if (ui->matchCaseCheckBox->checkState() == Qt::Checked)
+        searchExpr.setCaseSensitivity(Qt::CaseSensitive);
+    else
+        searchExpr.setCaseSensitivity(Qt::CaseInsensitive);
+
     if (!curr_browser) {
         return;
     }
-    if(!curr_browser->find(searchString, QTextDocument::FindFlags()))
+
+    if(!curr_browser->find(searchExpr, QTextDocument::FindFlags()))
     {
-        curr_browser->moveCursor(QTextCursor::Start);                              //Moves the cursor to start of text
-        curr_browser->find(searchString, QTextDocument::FindFlags());
+//        curr_browser->moveCursor(QTextCursor::Start);                              //Moves the cursor to start of text
+//        curr_browser->find(searchExpr, QTextDocument::FindFlags());
+        ((MainWindow *)(parent()))->on_actionLoad_Next_Page_triggered();
+        curr_browser->find(searchExpr, QTextDocument::FindFlags());
     }
 }
 
@@ -74,16 +85,24 @@ void TextFinder::on_findNextButton_clicked()
  */
 void TextFinder::on_findPreviousButton_clicked()
 {
-    QString searchString = ui->findLineEdit->text();
+    QRegExp searchExpr = QRegExp(ui->findLineEdit->text());
     QTextBrowser *curr_browser = ((MainWindow *)(parent()))->getCurrentBrowser();
+    if (ui->matchCaseCheckBox->checkState() == Qt::Checked)
+        searchExpr.setCaseSensitivity(Qt::CaseSensitive);
+    else
+        searchExpr.setCaseSensitivity(Qt::CaseInsensitive);
+
     if (!curr_browser) {
         return;
     }
-    if(!curr_browser->find(searchString, QTextDocument::FindBackward))
+    if(!curr_browser->find(searchExpr, QTextDocument::FindBackward))
     {
-        curr_browser->moveCursor(QTextCursor::End);                               //Moves the cursor to the end of text
-        curr_browser->find(searchString, QTextDocument::FindBackward);
+       // curr_browser->find(searchExpr, QTextDocument::FindBackward);
+        ((MainWindow *)(parent()))->on_actionLoad_Prev_Page_triggered();
+        curr_browser->moveCursor(QTextCursor::End);                        //Moves the cursor to the end of text
+        curr_browser->find(searchExpr, QTextDocument::FindBackward);
     }
+
 }
 
 /*!
@@ -102,7 +121,9 @@ void TextFinder::on_replaceButton_clicked()
     QTextCursor cursor = curr_browser->textCursor();
     if(cursor.hasSelection())
     {
-        if(cursor.selectedText() == searchString)
+        if(ui->matchCaseCheckBox->checkState() == Qt::Checked && cursor.selectedText() == searchString)
+            cursor.insertText(replaceString);
+        else if (ui->matchCaseCheckBox->checkState() == Qt::Unchecked && cursor.selectedText().toLower() == searchString.toLower())
             cursor.insertText(replaceString);
     }
 }
@@ -113,19 +134,87 @@ void TextFinder::on_replaceButton_clicked()
  */
 void TextFinder::on_replaceAllButton_clicked()
 {
-    QString searchString = ui->findLineEdit->text();
+    QRegExp searchExpr = QRegExp(ui->findLineEdit->text());
     QString replaceString = ui->replaceLineEdit->text();
     QTextBrowser *curr_browser = ((MainWindow *)(parent()))->getCurrentBrowser();
+    if (ui->matchCaseCheckBox->checkState() == Qt::Checked)
+        searchExpr.setCaseSensitivity(Qt::CaseSensitive);
+    else
+        searchExpr.setCaseSensitivity(Qt::CaseInsensitive);
     if (!curr_browser || curr_browser->isReadOnly()) {
         return;
     }
-    QTextCursor saved_cursor = curr_browser->textCursor();
-    curr_browser->moveCursor(QTextCursor::Start);
-    while(curr_browser->find(searchString))
-    {
-        curr_browser->textCursor().insertText(replaceString);
-    }
-    curr_browser->setTextCursor(saved_cursor);               //Moves the cursor to the last text location placed by the user
+
+    //! Replace in All Pages
+   if(ui->ReplaceAllPages->checkState()== Qt::Checked)
+   {
+      if(replaceString=="")
+      {
+          QMessageBox infoBox;
+          infoBox.information(0, "Error","Choose a replacement word to replace");
+          return;
+      }
+      QString currentFileDirectory = gDirTwoLevelUp + "/" + gCurrentDirName;
+      QDirIterator dirIterator(currentFileDirectory, QDirIterator::Subdirectories);
+
+      //!Get all the file names by iterating the directory
+      while (dirIterator.hasNext())
+      {
+          QString it_file_path = dirIterator.next();
+          QString suff = dirIterator.fileInfo().completeSuffix();
+
+          if(suff == "html")
+            {
+              //!Get the file string
+               QFile *f = new QFile(it_file_path);
+               f->open(QIODevice::ReadOnly);
+               QTextStream in(f);
+               in.setCodec("UTF-8");
+               QString s1 = in.readAll();
+               f->close();
+
+               //!Replacing Words
+               string str = replaceString.toStdString();
+               QString::fromStdString(str).toUtf8();
+               QString replacementString1 = QString::fromStdString(str);
+
+               string str2 = ui->findLineEdit->text().toStdString();
+               QString::fromStdString(str2).toUtf8();
+               QRegExp findWord = QRegExp(QString::fromStdString(str2));
+               if (ui->matchCaseCheckBox->checkState() == Qt::Checked)
+                   findWord.setCaseSensitivity(Qt::CaseSensitive);
+               else
+                   findWord.setCaseSensitivity(Qt::CaseInsensitive);
+
+               f->open(QIODevice::WriteOnly);
+               s1.replace(findWord, replacementString1);
+               f->write(s1.toUtf8());
+               f->close();
+            }
+      }
+
+//      string localFilename = mFilename.toUtf8().constData();
+//      QFile *file = new QFile(QString::fromStdString(localFilename));
+//      QFileInfo f(*file);
+//      QString suff = f.completeSuffix();
+//      if (suff == "txt" || suff == "html") {
+//       ((MainWindow *)(parent()))->LoadDocument(file,suff,currentTabPageName );
+//      }
+
+      ((MainWindow *)(parent()))->reLoadTabWindow();
+      //!Display message
+      QMessageBox messageBox;
+      messageBox.information(0, "Replacement Successful","Replaced in All Pages.");
+   }
+   else{
+   QTextCursor saved_cursor = curr_browser->textCursor();
+   curr_browser->moveCursor(QTextCursor::Start);
+   while(curr_browser->find(searchExpr))
+   {
+       curr_browser->textCursor().insertText(replaceString);
+   }
+   curr_browser->setTextCursor(saved_cursor);               //Moves the cursor to the last text location placed by the user
+  }
 }
 
 /*!
@@ -159,7 +248,8 @@ void TextFinder::keyPressEvent(QKeyEvent *e)
  * and converts the string of text into devanagari
  */
 QString TextFinder::toDevanagari(string text) {
-    return QString::fromStdString(toDev(toslp1(text)));
+    slpNPatternDict slnp;
+    return QString::fromStdString(slnp.toDev(slnp.toslp1(text)));
 }
 
 /*!

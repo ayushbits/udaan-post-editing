@@ -23,6 +23,7 @@
 #include <fstream>
 #include <vector>
 #include <utility>
+#include "crashlog.h"
 #include "ProjectHierarchyWindow.h"
 #include "3rdParty/RapidXML/rapidxml.hpp"
 #include <QDomDocument>
@@ -43,7 +44,7 @@
 #include <QDebug>
 #include<QtCore>
 #include<QtXml>
-#include <QPainter>
+//#include <QPainter>
 #include <QJsonObject>
 #include <QTextDocumentFragment>
 #include <sstream>
@@ -62,6 +63,9 @@
 #include "undoglobalreplace.h"
 #include "globalreplacepreview.h"
 #include "qtextdocumentfragment.h"
+#include <QColorDialog>
+#include "worker.h"
+#include <QThread>
 
 //gs -dNOPAUSE -dBATCH -sDEVICE=jpeg -r300 -sOutputFile='page-%00d.jpeg' Book.pdf
 map<string, int> Dict, GBook, IBook, PWords, PWordsP,ConfPmap,ConfPmapFont,CPairRight;
@@ -122,11 +126,16 @@ QList<QString> filesChangedUsingGlobalReplace;
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent),ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    qInstallMessageHandler(crashlog::myMessageHandler);
 //    ui->textBrowser->setStyleSheet("background-color:white;");
+
 
     int largeWidth = QGuiApplication::primaryScreen ()->size ().width ();
     ui->splitter->setSizes(QList<int>({largeWidth/2 , largeWidth, largeWidth}));
     ui->tabWidget_2->tabBar()->hide();
+    ui->lineEditSearch->setPlaceholderText("Search");
+    QIcon search_1("./Resources/search.jpeg");
+    ui->lineEditSearch->addAction(search_1, QLineEdit::LeadingPosition);
     QString password  = "";
     QString passwordFilePath = QDir::currentPath() + "/pass.txt";
     QFile passwordFile(passwordFilePath);
@@ -180,6 +189,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent),ui(new Ui::MainWin
     qApp->installEventFilter(this);
     AddRecentProjects();
 
+
     if (!isVerifier)
     {
         ui->actionHighlight->setEnabled(false);
@@ -204,9 +214,16 @@ bool MainWindow::setRole(QString role)
         RoleBox.setWindowTitle("Select Role");
         RoleBox.setIcon(QMessageBox::Question);
         RoleBox.setInformativeText("Which Role do you want to Load?");
-        QPushButton *managerButton = RoleBox.addButton(tr("Project Manager"),QMessageBox::AcceptRole);
-        QPushButton *verifierButton = RoleBox.addButton(tr("Verifier"),QMessageBox::AcceptRole);
-        QPushButton *correctorButton = RoleBox.addButton(tr("Corrector"),QMessageBox::AcceptRole);
+
+        #ifdef Q_OS_WIN
+        QPushButton *correctorButton = RoleBox.addButton(("Corrector"),QMessageBox::AcceptRole);
+        QPushButton *verifierButton = RoleBox.addButton(("Verifier"),QMessageBox::AcceptRole);
+        QPushButton *managerButton = RoleBox.addButton(("Project Manager"),QMessageBox::AcceptRole);
+        #else
+        QPushButton *managerButton = RoleBox.addButton(("Project Manager"),QMessageBox::AcceptRole);
+        QPushButton *verifierButton = RoleBox.addButton(("Verifier"),QMessageBox::AcceptRole);
+        QPushButton *correctorButton = RoleBox.addButton(("Corrector"),QMessageBox::AcceptRole);
+        #endif
         RoleBox.exec();
         if(RoleBox.clickedButton() == verifierButton)
             mRole = "Verifier";
@@ -401,6 +418,8 @@ string selectedStr ="";
 //!GIVE EVENT TO TEXT BROWZER INSTEAD OF MAINWINDOW
 void MainWindow::mousePressEvent(QMouseEvent *ev)
 {
+    slpNPatternDict slnp;
+    trieEditDis trie;
     if (curr_browser)
     {
         curr_browser->cursorForPosition(ev->pos());
@@ -427,24 +446,24 @@ void MainWindow::mousePressEvent(QMouseEvent *ev)
                 spell_menu = new QMenu("suggestions", this);
                 translate_menu = new QMenu("translate", this);
                 QFont font("Shobhika-Regular");
-                font.setWeight(14);
-                font.setPointSize(12);
+                font.setWeight(16);
+                font.setPointSize(16);
                 spell_menu->setFont(font);
                 translate_menu->setFont(font);
 
                 QAction* act;
 
-                vector<string>  Words1 = print5NearestEntries(TGBook, selectedStr);
+                vector<string>  Words1 = trie.print5NearestEntries(TGBook, selectedStr);
                 if (Words1.empty()) return;
-                vector<string> Alligned = print5NearestEntries(TGBookP, selectedStr);
+                vector<string> Alligned = trie.print5NearestEntries(TGBookP, selectedStr);
                 if (Alligned.empty()) return;
 
-                vector<string> PWords1 = print5NearestEntries(TPWords, selectedStr);
+                vector<string> PWords1 = trie.print5NearestEntries(TPWords, selectedStr);
                 if (PWords1.empty()) return;
 
-                string PairSugg = print2OCRSugg(selectedStr, Alligned[0], ConfPmap, Dict); // map<string,int>&
+                string PairSugg = slnp.print2OCRSugg(selectedStr, Alligned[0], ConfPmap, Dict); // map<string,int>&
                 if (PairSugg.empty())return;
-                vector<string>  Words = print1OCRNearestEntries(toslp1(selectedStr), vIBook);
+                vector<string>  Words = trie.print1OCRNearestEntries(slnp.toslp1(selectedStr), vIBook);
                 if (Words.empty())return;
 
                 //! find nearest confirming to OCR Sugg from Book
@@ -454,7 +473,7 @@ void MainWindow::mousePressEvent(QMouseEvent *ev)
                 for (size_t t = 0; t < vec.size(); t++)
                 {
                     vector<string> wordConfusions; vector<int> wCindex;
-                    int minFactor = loadWConfusionsNindex1(selectedStr, vec[t], ConfPmap, wordConfusions, wCindex);
+                    int minFactor = slnp.loadWConfusionsNindex1(selectedStr, vec[t], ConfPmap, wordConfusions, wCindex);
                     wordConfusions.clear(); wCindex.clear();
                     if (minFactor < min) { min = minFactor; nearestCOnfconfirmingSuggvec = vec[t]; }
                 }
@@ -465,7 +484,7 @@ void MainWindow::mousePressEvent(QMouseEvent *ev)
                 min = 100;
                 for (size_t t = 0; t < vec1.size(); t++) {
                     vector<string> wordConfusions; vector<int> wCindex;
-                    int minFactor = loadWConfusionsNindex1(selectedStr, vec1[t], ConfPmap, wordConfusions, wCindex);
+                    int minFactor = slnp.loadWConfusionsNindex1(selectedStr, vec1[t], ConfPmap, wordConfusions, wCindex);
                     wordConfusions.clear(); wCindex.clear();
                     if (minFactor < min) { min = minFactor; nearestCOnfconfirmingSuggvec1 = vec1[t]; }
                 }
@@ -479,52 +498,52 @@ void MainWindow::mousePressEvent(QMouseEvent *ev)
 
                 for (itr = CPairs.begin(); itr != CPairs.end(); ++itr)
                 {
-                    if(toslp1(itr->first) == toslp1(selectedStr))
+                    if(slnp.toslp1(itr->first) == slnp.toslp1(selectedStr))
                     {
                         for (set_it = itr->second.begin(); set_it != itr->second.end(); ++set_it)
                         {
-                           out.push_back(toslp1(*set_it));
+                           out.push_back(slnp.toslp1(*set_it));
                         }
                     }
                 }
 
                 cout<<"From CPairs: ";
                 for(auto& it : out){
-                    cout << toslp1(it) << endl;
+                    cout << slnp.toslp1(it) << endl;
                 }
                 for (size_t ksugg1 = 0; ksugg1 < 6; ksugg1++)
                 {
-                    if (out.size() > ksugg1)  mapSugg[toslp1(out[ksugg1])]++;
+                    if (out.size() > ksugg1)  mapSugg[slnp.toslp1(out[ksugg1])]++;
                 }
 
                 if(mProject.get_configuration()=="True")
                 {
-                    if (Words.size() > 0)  mapSugg[toslp1(Words[0])]++;
-                    if (Words1.size() > 0) mapSugg[toslp1(nearestCOnfconfirmingSuggvec)]++;
-                    if (PWords1.size() > 0) mapSugg[toslp1(nearestCOnfconfirmingSuggvec1)]++;
-                    if (PairSugg.size() > 0) mapSugg[toslp1(PairSugg)]++;
-                    mapSugg[SamasBreakLRCorrect(toslp1(selectedStr), Dict, PWords, TPWords, TPWordsP)]++;
-                    string s1 = toslp1(selectedStr);
+                    if (Words.size() > 0)  mapSugg[slnp.toslp1(Words[0])]++;
+                    if (Words1.size() > 0) mapSugg[slnp.toslp1(nearestCOnfconfirmingSuggvec)]++;
+                    if (PWords1.size() > 0) mapSugg[slnp.toslp1(nearestCOnfconfirmingSuggvec1)]++;
+                    if (PairSugg.size() > 0) mapSugg[slnp.toslp1(PairSugg)]++;
+                    mapSugg[trie.SamasBreakLRCorrect(slnp.toslp1(selectedStr), Dict, PWords, TPWords, TPWordsP)]++;
+                    string s1 = slnp.toslp1(selectedStr);
                     string nearestCOnfconfirmingSuggvecFont = "";
                     min = 100;
                     for (size_t t = 0; t < vec.size(); t++)
                     {
                         vector<string> wordConfusions; vector<int> wCindex;
-                        int minFactor = loadWConfusionsNindex1(s1, vec[t], ConfPmapFont, wordConfusions, wCindex);
+                        int minFactor = slnp.loadWConfusionsNindex1(s1, vec[t], ConfPmapFont, wordConfusions, wCindex);
                         wordConfusions.clear(); wCindex.clear();
                         if (minFactor < min) { min = minFactor; nearestCOnfconfirmingSuggvecFont = vec[t]; }
                     }
                     //if (nearestCOnfconfirmingSuggvecFont.size() > 0) mapSugg[nearestCOnfconfirmingSuggvecFont]++;
 
                     string PairSuggFont = "";
-                    if (Alligned.size() > 0) PairSuggFont = print2OCRSugg(s1, Alligned[0], ConfPmap, Dict);
+                    if (Alligned.size() > 0) PairSuggFont = slnp.print2OCRSugg(s1, Alligned[0], ConfPmap, Dict);
                     //if (PairSuggFont.size() > 0) mapSugg[PairSuggFont]++;
 
                     string sugg9 = "";
-                    sugg9 = generatePossibilitesNsuggest(s1, TopConfusions, TopConfusionsMask, Dict, SRules);
+                    sugg9 = slnp.generatePossibilitesNsuggest(s1, TopConfusions, TopConfusionsMask, Dict, SRules);
                     //if (sugg9.size() > 0) mapSugg[sugg9]++;
 
-                    cout<<"selected string: "<<toslp1(selectedStr)<<endl;
+                    cout<<"selected string: "<<slnp.toslp1(selectedStr)<<endl;
                     cout<<"Mapped Suggestion 0: "<<endl; //(string,int) Words, last no. of occuring, create single entry for single same word
 
                     cout<<"From Primary OCR: ";
@@ -536,16 +555,16 @@ void MainWindow::mousePressEvent(QMouseEvent *ev)
                     }
                     cout<<"Nearest confirming from Secondary OCR "<<nearestCOnfconfirmingSuggvec<<endl;
                     cout<<"Nearest confirming from PWords "<<nearestCOnfconfirmingSuggvec1<<endl;
-                    cout<<"One suggestion from ConfusionPair and secondary OCR Trie Pattern Data "<<toslp1(PairSugg)<<endl;
-                    cout<<"One suggestion from Pwords which is present in Dict "<<SamasBreakLRCorrect(toslp1(selectedStr), Dict, PWords, TPWords, TPWordsP)<<endl;
+                    cout<<"One suggestion from ConfusionPair and secondary OCR Trie Pattern Data "<<slnp.toslp1(PairSugg)<<endl;
+                    cout<<"One suggestion from Pwords which is present in Dict "<<trie.SamasBreakLRCorrect(slnp.toslp1(selectedStr), Dict, PWords, TPWords, TPWordsP)<<endl;
     //                cout<<"Nearest confirming from Secondary OCR by converting the string in English "<<nearestCOnfconfirmingSuggvecFont<<endl;
     //                cout<<"One suggestion from ConfusionPair and secondary OCR Trie Pattern Data by converting the string in English "<<toslp1(PairSuggFont)<<endl;
     //                cout<<"One suggestion from TopConfusion and SandhiRules by converting the string in English "<<sugg9<<endl;
                 }
-
+                eddis e;
                 for (map<string, int>::const_iterator eptr = mapSugg.begin(); eptr != mapSugg.end(); eptr++)
                 {
-                    vecSugg.push_back(make_pair(editDist(toslp1(eptr->first), toslp1(selectedStr)), eptr->first));
+                    vecSugg.push_back(make_pair(e.editDist(slnp.toslp1(eptr->first), slnp.toslp1(selectedStr)), eptr->first));
                 }
 
                 sort(vecSugg.begin(), vecSugg.end());
@@ -553,12 +572,12 @@ void MainWindow::mousePressEvent(QMouseEvent *ev)
                 cout << "\nVector Suggestions 0\n";
                 cout << "MappingNum\t vector_int\t Word\n";
                 for (uint i = 0; i < vecSugg.size(); i++){
-                    cout<<mapSugg[vecSugg[i].second]<<"\t"<<vecSugg[i].first<<"\t"<<toDev(vecSugg[i].second)<<endl;
+                    cout<<mapSugg[vecSugg[i].second]<<"\t"<<vecSugg[i].first<<"\t"<<slnp.toDev(vecSugg[i].second)<<endl;
                 }
 
                 for (uint bitarrayi = 0; bitarrayi < vecSugg.size(); bitarrayi++)
                 {
-                    act = new QAction(QString::fromStdString(toDev(vecSugg[bitarrayi].second)), spell_menu);
+                    act = new QAction(QString::fromStdString(slnp.toDev(vecSugg[bitarrayi].second)), spell_menu);
                     spell_menu->addAction(act);
                 }
 
@@ -618,6 +637,8 @@ void MainWindow::mousePressEvent(QMouseEvent *ev)
  */
 void MainWindow::menuSelection(QAction* action)
 {
+    slpNPatternDict slnp;
+    trieEditDis trie;
     if (curr_browser)
     {
         QTextCursor cursor = curr_browser->textCursor();
@@ -626,8 +647,8 @@ void MainWindow::menuSelection(QAction* action)
         cursor.removeSelectedText();
 
         string target = (action->text().toUtf8().constData());
-        CPair[toslp1(selectedStr)] = toslp1(target);
-        PWords[toslp1(target)]++;
+        CPair[slnp.toslp1(selectedStr)] = slnp.toslp1(target);
+        PWords[slnp.toslp1(target)]++;
         cursor.insertText(action->text());
 
         cursor.endEditBlock();
@@ -662,7 +683,7 @@ void MainWindow::translate_replace(QAction* action)
 */
 void MainWindow::on_actionSanskrit_triggered()
 {
-    HinFlag = 0, SanFlag = 1;
+    int HinFlag = 0, SanFlag = 1;
     ui->textEdit->setText(gSanskrit);//whenever language change is required it will be converted to Sanskrit using the slpNPatternDict.h
     ui->hinButton->setChecked(HinFlag);
 }
@@ -675,7 +696,7 @@ void MainWindow::on_actionSanskrit_triggered()
 */
 void MainWindow::on_actionHindi_triggered()
 {
-    HinFlag = 1, SanFlag = 0;
+    int HinFlag = 1, SanFlag = 0;
     ui->textEdit->setText(gHindi);  //whenever language change is required it will be converted to Hindi using the slpNPatternDict.h
     ui->sanButton->setChecked(SanFlag);
 }
@@ -688,7 +709,7 @@ void MainWindow::on_actionHindi_triggered()
 */
 void MainWindow::on_actionEnglish_triggered()
 {
-    HinFlag = 0, SanFlag = 0;
+    int HinFlag = 0, SanFlag = 0;
     ui->hinButton->setChecked(HinFlag);//whenever language change is required it will be left as it is
     ui->sanButton->setChecked(SanFlag);
 }
@@ -740,6 +761,9 @@ void MainWindow::on_actionOpen_Project_triggered() { //Version Based
 
     QString ProjFile;
 
+    int totalFileCountInDir = 0;
+    QMap<QString, int> fileCountInDir;
+
     if(isRecentProjclick == true)
     {
       ProjFile = RecentProjFile;
@@ -776,12 +800,12 @@ void MainWindow::on_actionOpen_Project_triggered() { //Version Based
         QDir().mkdir(s5);
     }
 
+
     bool exists = QDir(s1).exists() && QDir(s2).exists();
     if (xml.exists()&& exists)
     {
-        ui->treeView->reset();    //reinitialize the ProjectHierarchyWindow
+        ui->treeView->reset();    //reinitialize the ProjectHierarchyWindow       
         mProject.process_xml(xml);
-
         mProject.open_git_repo();   //Open git repo
         if(!mProject.isProjectOpen())
         {
@@ -792,11 +816,14 @@ void MainWindow::on_actionOpen_Project_triggered() { //Version Based
         ui->treeView->setContextMenuPolicy(Qt::CustomContextMenu);
 
         QString stage = mProject.get_stage();                          //fetches the stage from project.xml file
+        mProject.set_stage(mRole);
         QString version = mProject.get_version();                      //Fetches version from project.xml file
         ui->lineEdit_2->setText("Version: " + version);                //Updates version in ui
 
         //!Get the path of all necessary directories
         QDir dir = mProject.GetDir();
+
+        QString dirName=dir.dirName();
         QString str1 = mProject.GetDir().absolutePath()+"/CorrectorOutput/";
         QString str2 = mProject.GetDir().absolutePath() + "/VerifierOutput/";
         QString str3 = mProject.GetDir().absolutePath() + "/Inds/";
@@ -820,14 +847,17 @@ void MainWindow::on_actionOpen_Project_triggered() { //Version Based
 
             QString t = str1 + "/" + f;
             QFile f2(t);
-            if(x[1]=="html")
-            mProject.AddTemp(filter,f2,"");
+            if(x[1]=="html") {
+                totalFileCountInDir++;
+                mProject.AddTemp(filter,f2,"");
+            }
             corrector_set.insert(f);
-
-
         }
+        fileCountInDir["Corrector"] = totalFileCountInDir;
+        totalFileCountInDir = 0;
         //!Adds each file present in VerifierOutput directory to treeView
         cdir.setPath(str2);
+
         filter = mProject.getFilter("VerifierOutput");
         list = cdir.entryList(QDir::Filter::Files);
         for (auto f : list)
@@ -836,32 +866,86 @@ void MainWindow::on_actionOpen_Project_triggered() { //Version Based
 
             QString t = str2 + "/" + f;
             QFile f2(t);
-            if(x[1]=="html")
-            mProject.AddTemp(filter, f2, "");
+            if(x[1]=="html") {
+                totalFileCountInDir++;
+                mProject.AddTemp(filter, f2, "");
+            }
             verifier_set.insert(f);
         }
+        fileCountInDir["Verifier"] = totalFileCountInDir;
+        totalFileCountInDir = 0;
+
         filter = mProject.getFilter("Document");
         //!Adds the files from inds folder to treeView
         cdir.setPath(str3);
+
         list = cdir.entryList(QDir::Filter::Files);
         for (auto f : list)
         {
             QString t = str3 + "/" + f;
             QFile f2(t);
             mProject.AddTemp(filter, f2, "");
+            totalFileCountInDir++;
         }
+        fileCountInDir["Inds"] = totalFileCountInDir;
+        totalFileCountInDir = 0;
 
         //!To Display treeView for Image
         filter = mProject.getFilter("Image");
 
         //!Adds the files from Image folder to treeView
         cdir.setPath(str4);
+
         list = cdir.entryList(QDir::Filter::Files);
         for (auto f : list) {
             QString t = str4 + "/" + f;
             QFile f2(t);
             mProject.AddTemp(filter, f2, "");
+            totalFileCountInDir++;
         }
+        fileCountInDir["Image"] = totalFileCountInDir;
+        totalFileCountInDir = 0; // Resetting variable to 0
+
+        // Resizing scroll bar for project window
+
+        int maxFilesInDir = 0;
+        for (auto fileCount : fileCountInDir.values())
+        {
+            if (fileCount > maxFilesInDir)
+                maxFilesInDir = fileCount;
+        }
+
+        QString heightValue;
+        if (maxFilesInDir < 50) {
+            heightValue = "200px";
+        }
+        else if (maxFilesInDir < 200) {
+            heightValue = "60px";
+        }
+        else {
+            heightValue = "50px";
+        }
+
+        QString projectWindowStylesheet = ui->treeView->styleSheet();
+        int indexOfScrollBarProp = projectWindowStylesheet.indexOf("QScrollBar::handle:vertical");
+        int heightProp = projectWindowStylesheet.indexOf("height:", indexOfScrollBarProp);
+
+        if (heightProp != -1) {
+            int startIndex = heightProp + 7; // here, 7 is the length of "height:" string
+            int endIndex;
+            for (int i = startIndex; projectWindowStylesheet[i] != ';'; i++)
+                endIndex = i;
+
+            int replaceSize = endIndex - startIndex + 1;
+            projectWindowStylesheet.replace(startIndex, replaceSize, heightValue);
+        }
+        else {
+            int insertHeightProp = projectWindowStylesheet.indexOf("{", indexOfScrollBarProp) + 1;
+            projectWindowStylesheet.insert(insertHeightProp, "height:" + heightValue);
+        }
+        ui->treeView->setStyleSheet(projectWindowStylesheet);
+
+
 
 //        //!Disable Corrector Turn In once the Corrector has Turned in until the next version is fetched.
 //        if(!isVerifier)
@@ -895,7 +979,10 @@ void MainWindow::on_actionOpen_Project_triggered() { //Version Based
         QMessageBox::information(0, "Success", "Project opened successfully.");
         ui->tabWidget_2->removeTab(0);
         //!Genearte image.xml for figure/table/equation entries and initialize these values by 1.
-     objectMarkRegion.createImageInfoXMLFile();
+
+        markRegion objectMarkRegion;
+
+        objectMarkRegion.createImageInfoXMLFile();
 
         //!save project paths for showing it on recent projects
         QSettings settings("IIT-B", "OpenOCRCorrect");
@@ -936,251 +1023,14 @@ void MainWindow::AddRecentProjects()
      }
 }
 
-/*!
- * \fn MainWindow::on_actionSave_triggered()
- * \brief This function will save any changes made in the current file.
- * \sa SaveTimeLog(), DisplayTimeLog()
-*/
+
 bool ConvertSlpDevFlag = 0;
 
-void MainWindow::SaveFile(){
-    //SaveTimeLog();
-    DisplayTimeLog();
-    QVector <QString> changedWords;
-    //! When changes are made by the verifier the following values are also updated.
-    if(isVerifier)
-    {
-        gSaveTriggered = 1;
-        on_viewComments_clicked();
-        gSaveTriggered = 0;
-        updateAverageAccuracies();
-    }
-    ConvertSlpDevFlag =1;
+void MainWindow::SaveFile_GUI_1()
+{
 
-    /*
-     * If file name is \value untitled on_actionSave_As_triggered is called.
-     * Otherwise we will update the changes in the existing saved file.
-    */
-    if (mFilename=="Untitled")
-    {
-        on_actionSave_As_triggered();
-    }
-    else
-    {
-        QString tempPageName = gCurrentPageName;
-
-        //! Selecting the location where file is to be saved
-        QString changefiledir = filestructure_fw[gCurrentDirName];
-        QString localFilename = gDirTwoLevelUp + "/" +changefiledir +"/" + tempPageName;
-
-        localFilename.replace(".txt",".html");
-
-        //! Don't create and save new file if output file already exists.
-        if (gCurrentDirName == "Inds" || isVerifier && gCurrentDirName == "CorrectorOutput")
-        {
-            QFileInfo check_file(localFilename);
-            if (check_file.exists() && check_file.isFile())
-            {
-                emit closeSignal();
-                return ;
-            }
-        }
-
-        QFile sFile(localFilename);
-
-        QTextCharFormat fmt;
-        fmt.setForeground(QBrush(QColor(0,0,0)));           //Setting foreground brush to render text
-        QTextCursor cursor = curr_browser->textCursor();
-        cursor.select(QTextCursor::Document);
-        cursor.mergeCharFormat(fmt);
-
-        QString output = curr_browser->toHtml();
-
-        QTextDocument doc;
-        doc.setHtml( gInitialTextHtml[currentTabPageName] );
-        s1 = doc.toPlainText();          //before Saving
-        s2 = curr_browser->toPlainText();       //after Saving
-
-        changedWords = editDistance(s1, s2);             // Update CPair by editdistance
-        QVectorIterator<QString> i(changedWords);
-        while (i.hasNext())
-            qDebug() << i.next()<<endl;
-        //! Do commit when there are some changes in previous and new html file on the basis of editdistance.
-        if(changedWords.size())
-        {
-            if(mProject.get_version().toInt())     //Check version number
-            {
-                QString commit_msg = "Corrector Turned in Version: " + mProject.get_version();
-                //!Check commit condition
-                if(!mProject.commit(commit_msg.toStdString()))
-                {
-                    cout<<"Commit Unsuccessful"<<endl;
-                    emit closeSignal();
-                    return;
-                }
-                else
-                {
-                    mProject.commit(commit_msg.toStdString());
-                    cout<<"Commit Successful"<<endl;
-                }
-            }
-        }
-
-        //CPair.insert(CPair_editDis.begin(), CPair_editDis.end());
-        //! Enters entries in CPairs through CPair_editDis; allows multiple entries for a incorrent word entry
-        for(auto elem : CPair_editDis)
-        {
-           std::cerr << elem.first << " " << elem.second << "\n";
-           std::cerr << toslp1(elem.first) << " " << toslp1(elem.second) << "\n";
-           //CPair.insert(make_pair(toslp1(elem.first), toslp1(elem.second)));
-           if ( CPairs.find(toslp1(elem.first)) != CPairs.end())
-           {
-               std::set< std::string>& s_ref = CPairs[toslp1(elem.first)];
-               s_ref.insert(toslp1(elem.second));
-           }
-           else
-           {
-               CPairs[toslp1(elem.first)].insert(toslp1(elem.second));
-           }
-        }
-
-        //! Reflecting CPairs entries in the file /Dicts/CPair; Making it dynamic
-        QString filename12 = mProject.GetDir().absolutePath() + "/Dicts/" + "CPair";
-        QFile file12(filename12);
-        if(!file12.exists())
-        {
-           qDebug() << "No exist file "<<filename12;
-        }
-        else
-        {
-           qDebug() << filename12<<"exists";
-        }
-
-        //! Insert entries in Correct Formatting Hello (/t) hi,(comma)hiii
-        if (file12.open(QIODevice::WriteOnly | QIODevice::Text))
-        {
-            QTextStream out(&file12);
-            out.setCodec("UTF-8");
-            map<string, set<string>>::iterator itr;
-            set<string>::iterator set_it;
-
-            for (itr = CPairs.begin(); itr != CPairs.end(); ++itr)
-            {
-                out <<  QString::fromStdString(toDev(itr->first)) << '\t';
-                for (set_it = itr->second.begin(); set_it != itr->second.end(); ++set_it)
-                {
-                    if(set_it != prev(itr->second.end()))
-                    {
-                        out << QString::fromStdString(toDev(*set_it)) << ",";
-                    }
-                    else {
-                        out << QString::fromStdString(toDev(*set_it));
-                    }
-
-                }
-                out <<"\n";
-            }
-             file12.close();
-        }
-
-        //! If file is in write-only mode
-        if(sFile.open(QFile::WriteOnly))
-        {
-            QTextStream out(&sFile);
-            out.setCodec("UTF-8");          //Sets the codec for this stream
-            gInitialTextHtml[currentTabPageName] = output;
-            output = "<style> body{ width: 21cm; height: 29.7cm; margin: 30mm 45mm 30mm 45mm; } </style>" + output;     //Formatting the output using CSS <style> tag
-            out << output;
-            sFile.flush();      //Flushes any buffered data waiting to be written in the \a sFile
-            sFile.close();      //Closing the file
-        }
-
-        //! Converting html output into plain text.
-        QTextDocumentFragment qtextdocfragment;
-        QString plain = qtextdocfragment.fromHtml(output).toPlainText();
-
-        std::stringstream ss(plain.toStdString());
-        std::string to;
-        //! Appending the plain text in QVector<QString> object.
-        QVector<QString> s;
-        if (plain != NULL)
-        {
-            while(std::getline(ss,to,'\n'))
-            {
-                QString qstr = QString::fromStdString(to);
-                s.append(qstr);
-            }
-        }
-
-        //! Inserting string values in \a qjsonobj.
-        QJsonObject qjsonobj;
-        for(int i = 0;i < s.size(); i++)
-        {
-            QString z = QString::number(i);
-            qjsonobj.insert(z, QJsonValue(s[i]));
-        }
-        int len = qjsonobj.length();
-
-        localFilename.replace(".html",".json");         //Replacing extension of file from .html to .json
-        QFile sFile2(localFilename);
-
-        //! Sets codec value and then adding values in file
-        if(sFile2.open(QIODevice::WriteOnly | QIODevice::Text))
-        {
-            QTextStream out(&sFile2);
-            out.setCodec("UTF-8");
-            out << "{\n";
-            for(int x = 0; x<len; x++)
-            {
-                QString z = QString::number(x);
-                out << "\"" << x << "\"" << ":" << "\"" << qjsonobj[z].toString() << "\"" <<","<< '\n';
-            }
-            out << "}";
-
-            sFile2.flush();
-            sFile2.close();
-        }
-
-        //! Set Inds file readonly after saving - Corrector mode
-        if (!isVerifier && gCurrentDirName == "Inds")
-        {
-            if(QFile::exists(localFilename))
-            {
-                curr_browser->setReadOnly(true);
-            }
-
-        }
-
-        //! Set Inds and CorrectorOutput files readonly after generating output file - Verifier mode
-        if (isVerifier && (gCurrentDirName == "Inds" || gCurrentDirName == "CorrectorOutput"))
-        {
-            if(QFile::exists(localFilename))
-            {
-                QString Inds_file = gCurrentPageName;
-                Inds_file.replace(".html", ".txt");
-                QString Corr_file = Inds_file;
-                Corr_file.replace(".txt", ".html");
-                for (int i = 0; i < ui->tabWidget_2->count(); i++)
-                {
-                    QString tab_name = ui->tabWidget_2->tabText(i);
-                    if (tab_name == Inds_file || tab_name == Corr_file)
-                    {
-                        auto b = (QTextBrowser*)ui->tabWidget_2->widget(i);
-                        b->setReadOnly(true);
-                    }
-                }
-            }
-        }
-    }
-
-    emit closeSignal();
-
-}
-
-
-
-void MainWindow::on_actionSave_triggered()
-{   if (!mProject.isProjectOpen())
+    SaveTimeLog();
+    if (!mProject.isProjectOpen())
         return;
     //! Adding entries in Timelog.json about the elapsed time
     int nMilliseconds = myTimer.elapsed();
@@ -1194,19 +1044,565 @@ void MainWindow::on_actionSave_triggered()
     newTimeLog[mRole +":"+ gCurrentPageName +":V-"+ currentVersion] = {gSeconds, dateTime};
 
     SaveTimeLog();
+    DisplayTimeLog();
+    //! When changes are made by the verifier the following values are also updated.
+    if(isVerifier)
+    {
+        gSaveTriggered = 1;
+        on_viewComments_clicked();
+        gSaveTriggered = 0;
+        updateAverageAccuracies();
+    }
+    ConvertSlpDevFlag =1;
+        QTextCharFormat fmt;
+        //fmt.setForeground(QBrush(QColor(0,0,0)));           //Setting foreground brush to render text
+        QTextCursor cursor = curr_browser->textCursor();
+        cursor.beginEditBlock();
+        cursor.select(QTextCursor::Document);
+        cursor.mergeCharFormat(fmt);
+        cursor.endEditBlock();
 
-    LoadingSpinner *spinner = new LoadingSpinner(this);
-    spinner->SetSave();
-    spinner->setModal(false);
-    QtConcurrent::run(this,&MainWindow::SaveFile);
-    connect(this, &MainWindow::closeSignal, spinner, &LoadingSpinner::close);
-    spinner->exec();
+        QString output = curr_browser->toHtml();
+
+        QTextDocument doc;
+        doc.setHtml( gInitialTextHtml[currentTabPageName] );
+        s1 = doc.toPlainText();          //before Saving
+        s2 = curr_browser->toPlainText();       //after Saving
+
+}
+void MainWindow::SaveFile_Backend()
+{
+    slpNPatternDict slnp;
     QVector <QString> changedWords;
-    changedWords = editDistance(s1, s2);             // Update CPair by editdistance
+    QString tempPageName = gCurrentPageName;
+
+    //! Selecting the location where file is to be saved
+    QString changefiledir = filestructure_fw[gCurrentDirName];
+    QString localFilename = gDirTwoLevelUp + "/" +changefiledir +"/" + tempPageName;
+
+    localFilename.replace(".txt",".html");
+
+    QFile sFile(localFilename);
+    edit_Distance ed;
+    changedWords = ed.editDistance(s1, s2);             // Update CPair by editdistance
+    QVectorIterator<QString> i(changedWords);
+    while (i.hasNext())
+        qDebug() << i.next()<<endl;
+
+    //! Do commit when there are some changes in previous and new html file on the basis of editdistance.
+    if(changedWords.size())
+    {
+        if(mProject.get_version().toInt())     //Check version number
+        {
+            QString commit_msg = "Corrector Turned in Version: " + mProject.get_version();
+            //!Check commit condition
+            if(!mProject.commit(commit_msg.toStdString()))
+            {
+                //cout<<"Commit Unsuccessful"<<endl;
+                return;
+            }
+            else
+            {
+                mProject.commit(commit_msg.toStdString());
+                //cout<<"Commit Successful"<<endl;
+            }
+        }
+    }
+
+    //CPair.insert(CPair_editDis.begin(), CPair_editDis.end());
+    //! Enters entries in CPairs through CPair_editDis; allows multiple entries for a incorrent word entry
+    for(auto elem : CPair_editDis)
+    {
+       std::cerr << elem.first << " " << elem.second << "\n";
+       std::cerr << slnp.toslp1(elem.first) << " " << slnp.toslp1(elem.second) << "\n";
+       //CPair.insert(make_pair(toslp1(elem.first), toslp1(elem.second)));
+       if ( CPairs.find(slnp.toslp1(elem.first)) != CPairs.end())
+       {
+           std::set< std::string>& s_ref = CPairs[slnp.toslp1(elem.first)];
+           s_ref.insert(slnp.toslp1(elem.second));
+       }
+       else
+       {
+           CPairs[slnp.toslp1(elem.first)].insert(slnp.toslp1(elem.second));
+       }
+    }
+
+    //! Reflecting CPairs entries in the file /Dicts/CPair; Making it dynamic
+    QString filename12 = mProject.GetDir().absolutePath() + "/Dicts/" + "CPair";
+    QFile file12(filename12);
+    if(!file12.exists())
+    {
+       qDebug() << "No exist file "<<filename12;
+    }
+    else
+    {
+       qDebug() << filename12<<"exists";
+    }
+
+    //! Insert entries in Correct Formatting Hello (/t) hi,(comma)hiii
+    if (file12.open(QIODevice::ReadWrite  | QIODevice::Text | QIODevice::Append))
+    {
+        QTextStream out(&file12);
+        out.setCodec("UTF-8");
+        map<string, set<string>>::iterator itr;
+        set<string>::iterator set_it;
+
+        for (itr = CPairs.begin(); itr != CPairs.end(); ++itr)
+        {
+            out <<  QString::fromStdString(slnp.toDev(itr->first)) << '\t';
+            for (set_it = itr->second.begin(); set_it != itr->second.end(); ++set_it)
+            {
+                if(set_it != prev(itr->second.end()))
+                {
+                    out << QString::fromStdString(slnp.toDev(*set_it)) << ",";
+                }
+                else {
+                    out << QString::fromStdString(slnp.toDev(*set_it));
+                }
+
+            }
+            out <<"\n";
+        }
+         file12.close();
+    }
+}
+
+
+void MainWindow::SaveFile_GUI_2()
+{
+
+    QString tempPageName = gCurrentPageName;
+
+    //! Selecting the location where file is to be saved
+    QString changefiledir = filestructure_fw[gCurrentDirName];
+    QString localFilename = gDirTwoLevelUp + "/" +changefiledir +"/" + tempPageName;
+
+    localFilename.replace(".txt",".html");
+
+    QFile sFile(localFilename);
+
+    QString output = curr_browser->toHtml();
+
+    if(sFile.open(QFile::WriteOnly))
+    {
+        QTextStream out(&sFile);
+        out.setCodec("UTF-8");          //Sets the codec for this stream
+        gInitialTextHtml[currentTabPageName] = output;
+        output = "<style> body{ width: 21cm; height: 29.7cm; margin: 30mm 45mm 30mm 45mm; } </style>" + output;     //Formatting the output using CSS <style> tag
+        out << output;
+        sFile.flush();      //Flushes any buffered data waiting to be written in the \a sFile
+        sFile.close();      //Closing the file
+    }
+
+    //! Converting html output into plain text.
+    QTextDocumentFragment qtextdocfragment;
+    QString plain = qtextdocfragment.fromHtml(output).toPlainText();
+
+    std::stringstream ss(plain.toStdString());
+    std::string to;
+    //! Appending the plain text in QVector<QString> object.
+    QVector<QString> s;
+    if (plain != NULL)
+    {
+        while(std::getline(ss,to,'\n'))
+        {
+            QString qstr = QString::fromStdString(to);
+            s.append(qstr);
+        }
+    }
+
+    //! Inserting string values in \a qjsonobj.
+    QJsonObject qjsonobj;
+    for(int i = 0;i < s.size(); i++)
+    {
+        QString z = QString::number(i);
+        qjsonobj.insert(z, QJsonValue(s[i]));
+    }
+    int len = qjsonobj.length();
+
+    localFilename.replace(".html",".json");         //Replacing extension of file from .html to .json
+    QFile sFile2(localFilename);
+
+    //! Sets codec value and then adding values in file
+    if(sFile2.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QTextStream out(&sFile2);
+        out.setCodec("UTF-8");
+        out << "{\n";
+        for(int x = 0; x<len; x++)
+        {
+            QString z = QString::number(x);
+            out << "\"" << x << "\"" << ":" << "\"" << qjsonobj[z].toString() << "\"" <<","<< '\n';
+        }
+        out << "}";
+
+        sFile2.flush();
+        sFile2.close();
+    }
+
+    //! Set Inds file readonly after saving - Corrector mode
+    if (!isVerifier && gCurrentDirName == "Inds")
+    {
+        if(QFile::exists(localFilename))
+        {
+            curr_browser->setReadOnly(true);
+        }
+
+    }
+
+    //! Set Inds and CorrectorOutput files readonly after generating output file - Verifier mode
+    if (isVerifier && (gCurrentDirName == "Inds" || gCurrentDirName == "CorrectorOutput"))
+    {
+        if(QFile::exists(localFilename))
+        {
+            QString Inds_file = gCurrentPageName;
+            Inds_file.replace(".html", ".txt");
+            QString Corr_file = Inds_file;
+            Corr_file.replace(".txt", ".html");
+            for (int i = 0; i < ui->tabWidget_2->count(); i++)
+            {
+                QString tab_name = ui->tabWidget_2->tabText(i);
+                if (tab_name == Inds_file || tab_name == Corr_file)
+                {
+                    auto b = (QTextBrowser*)ui->tabWidget_2->widget(i);
+                    b->setReadOnly(true);
+                }
+            }
+        }
+    }
+
+    QString currentDirAbsolutePath = gDirTwoLevelUp + "/" + gCurrentDirName;
+
+
+}
+
+
+
+/*!
+ * \fn MainWindow::on_actionSave_triggered()
+ * \brief This function will save any changes made in the current file.
+ * \sa SaveTimeLog(), DisplayTimeLog()
+*/
+
+void MainWindow::on_actionSave_triggered()
+{
+    // check if file is new
+    if (mFilename=="Untitled")
+    {
+        on_actionSave_As_triggered();
+    }
+    else
+    {
+        SaveFile_GUI_1(); // GUI Preprocessing
+
+        Worker *worker = new Worker(nullptr, this);
+        QThread *thread = new QThread;
+
+        connect(thread, SIGNAL(started()), worker, SLOT(doSaveBackend()));
+        connect(worker, SIGNAL(finished()), thread, SLOT(quit()));
+        connect(worker, SIGNAL(finished()), worker, SLOT(deleteLater()));
+        connect(thread, SIGNAL(finished()), thread, SLOT(deleteLater()));
+        connect(worker, SIGNAL(finished()), this, SLOT(stopSpinning()));
+        worker->moveToThread(thread);
+        thread->start();
+
+        spinner = new LoadingSpinner(this);
+        spinner->SetSave();
+        spinner->setModal(false);
+        spinner->exec();
+
+        SaveFile_GUI_2(); // GUI Postprocessing
+        QtConcurrent::run(this, &MainWindow::writeSettings);;
+    }
+    // Run Global Replace
+
+    GlobalReplace();
+
+}
+
+void MainWindow::stopSpinning()
+{
+    spinner->close();
+    spinner->deleteLater();
+}
+
+
+void MainWindow::GlobalReplace()
+{
+    edit_Distance ed;
+    QVector <QString> changedWords;
+    changedWords = ed.editDistance(s1, s2);             // Update CPair by editdistance
     QString currentDirAbsolutePath = gDirTwoLevelUp + "/" + gCurrentDirName;
     runGlobalReplace(currentDirAbsolutePath, changedWords);
     ConvertSlpDevFlag =0;
 }
+
+//void MainWindow::SaveFile(){
+//    //SaveTimeLog();
+//    DisplayTimeLog();
+//    QVector <QString> changedWords;
+//    //! When changes are made by the verifier the following values are also updated.
+//    if(isVerifier)
+//    {
+//        gSaveTriggered = 1;
+//        on_viewComments_clicked();
+//        gSaveTriggered = 0;
+//        updateAverageAccuracies();
+//    }
+//    ConvertSlpDevFlag =1;
+
+//    /*
+//     * If file name is \value untitled on_actionSave_As_triggered is called.
+//     * Otherwise we will update the changes in the existing saved file.
+//    */
+//    if (mFilename=="Untitled")
+//    {
+//        on_actionSave_As_triggered();
+//    }
+//    else
+//    {
+//        QString tempPageName = gCurrentPageName;
+
+//        //! Selecting the location where file is to be saved
+//        QString changefiledir = filestructure_fw[gCurrentDirName];
+//        QString localFilename = gDirTwoLevelUp + "/" +changefiledir +"/" + tempPageName;
+
+//        localFilename.replace(".txt",".html");
+
+//        //! Don't create and save new file if output file already exists.
+//        if (gCurrentDirName == "Inds" || isVerifier && gCurrentDirName == "CorrectorOutput")
+//        {
+//            QFileInfo check_file(localFilename);
+//            if (check_file.exists() && check_file.isFile())
+//            {
+//                emit closeSignal();
+//                return ;
+//            }
+//        }
+
+//        QFile sFile(localFilename);
+
+//        QTextCharFormat fmt;
+//        //fmt.setForeground(QBrush(QColor(0,0,0)));           //Setting foreground brush to render text
+//        QTextCursor cursor = curr_browser->textCursor();
+//        cursor.beginEditBlock();
+//        cursor.select(QTextCursor::Document);
+//        cursor.mergeCharFormat(fmt);
+//        cursor.endEditBlock();
+
+//        QString output = curr_browser->toHtml();
+
+//        QTextDocument doc;
+//        doc.setHtml( gInitialTextHtml[currentTabPageName] );
+//        s1 = doc.toPlainText();          //before Saving
+//        s2 = curr_browser->toPlainText();       //after Saving
+
+//        changedWords = editDistance(s1, s2);             // Update CPair by editdistance
+//        QVectorIterator<QString> i(changedWords);
+//        while (i.hasNext())
+//            qDebug() << i.next()<<endl;
+//        //! Do commit when there are some changes in previous and new html file on the basis of editdistance.
+//        if(changedWords.size())
+//        {
+//            if(mProject.get_version().toInt())     //Check version number
+//            {
+//                QString commit_msg = "Corrector Turned in Version: " + mProject.get_version();
+//                //!Check commit condition
+//                if(!mProject.commit(commit_msg.toStdString()))
+//                {
+//                    //cout<<"Commit Unsuccessful"<<endl;
+//                    emit closeSignal();
+//                    return;
+//                }
+//                else
+//                {
+//                    mProject.commit(commit_msg.toStdString());
+//                    //cout<<"Commit Successful"<<endl;
+//                }
+//            }
+//        }
+
+//        //CPair.insert(CPair_editDis.begin(), CPair_editDis.end());
+//        //! Enters entries in CPairs through CPair_editDis; allows multiple entries for a incorrent word entry
+//        for(auto elem : CPair_editDis)
+//        {
+//           std::cerr << elem.first << " " << elem.second << "\n";
+//           std::cerr << toslp1(elem.first) << " " << toslp1(elem.second) << "\n";
+//           //CPair.insert(make_pair(toslp1(elem.first), toslp1(elem.second)));
+//           if ( CPairs.find(toslp1(elem.first)) != CPairs.end())
+//           {
+//               std::set< std::string>& s_ref = CPairs[toslp1(elem.first)];
+//               s_ref.insert(toslp1(elem.second));
+//           }
+//           else
+//           {
+//               CPairs[toslp1(elem.first)].insert(toslp1(elem.second));
+//           }
+//        }
+
+//        //! Reflecting CPairs entries in the file /Dicts/CPair; Making it dynamic
+//        QString filename12 = mProject.GetDir().absolutePath() + "/Dicts/" + "CPair";
+//        QFile file12(filename12);
+//        if(!file12.exists())
+//        {
+//           qDebug() << "No exist file "<<filename12;
+//        }
+//        else
+//        {
+//           qDebug() << filename12<<"exists";
+//        }
+
+//        //! Insert entries in Correct Formatting Hello (/t) hi,(comma)hiii
+//        if (file12.open(QIODevice::ReadWrite  | QIODevice::Text | QIODevice::Append))
+//        {
+//            QTextStream out(&file12);
+//            out.setCodec("UTF-8");
+//            map<string, set<string>>::iterator itr;
+//            set<string>::iterator set_it;
+
+//            for (itr = CPairs.begin(); itr != CPairs.end(); ++itr)
+//            {
+//                out <<  QString::fromStdString(toDev(itr->first)) << '\t';
+//                for (set_it = itr->second.begin(); set_it != itr->second.end(); ++set_it)
+//                {
+//                    if(set_it != prev(itr->second.end()))
+//                    {
+//                        out << QString::fromStdString(toDev(*set_it)) << ",";
+//                    }
+//                    else {
+//                        out << QString::fromStdString(toDev(*set_it));
+//                    }
+
+//                }
+//                out <<"\n";
+//            }
+//             file12.close();
+//        }
+
+//        //! If file is in write-only mode
+//        if(sFile.open(QFile::WriteOnly))
+//        {
+//            QTextStream out(&sFile);
+//            out.setCodec("UTF-8");          //Sets the codec for this stream
+//            gInitialTextHtml[currentTabPageName] = output;
+//            output = "<style> body{ width: 21cm; height: 29.7cm; margin: 30mm 45mm 30mm 45mm; } </style>" + output;     //Formatting the output using CSS <style> tag
+//            out << output;
+//            sFile.flush();      //Flushes any buffered data waiting to be written in the \a sFile
+//            sFile.close();      //Closing the file
+//        }
+
+//        //! Converting html output into plain text.
+//        QTextDocumentFragment qtextdocfragment;
+//        QString plain = qtextdocfragment.fromHtml(output).toPlainText();
+
+//        std::stringstream ss(plain.toStdString());
+//        std::string to;
+//        //! Appending the plain text in QVector<QString> object.
+//        QVector<QString> s;
+//        if (plain != NULL)
+//        {
+//            while(std::getline(ss,to,'\n'))
+//            {
+//                QString qstr = QString::fromStdString(to);
+//                s.append(qstr);
+//            }
+//        }
+
+//        //! Inserting string values in \a qjsonobj.
+//        QJsonObject qjsonobj;
+//        for(int i = 0;i < s.size(); i++)
+//        {
+//            QString z = QString::number(i);
+//            qjsonobj.insert(z, QJsonValue(s[i]));
+//        }
+//        int len = qjsonobj.length();
+
+//        localFilename.replace(".html",".json");         //Replacing extension of file from .html to .json
+//        QFile sFile2(localFilename);
+
+//        //! Sets codec value and then adding values in file
+//        if(sFile2.open(QIODevice::WriteOnly | QIODevice::Text))
+//        {
+//            QTextStream out(&sFile2);
+//            out.setCodec("UTF-8");
+//            out << "{\n";
+//            for(int x = 0; x<len; x++)
+//            {
+//                QString z = QString::number(x);
+//                out << "\"" << x << "\"" << ":" << "\"" << qjsonobj[z].toString() << "\"" <<","<< '\n';
+//            }
+//            out << "}";
+
+//            sFile2.flush();
+//            sFile2.close();
+//        }
+
+//        //! Set Inds file readonly after saving - Corrector mode
+//        if (!isVerifier && gCurrentDirName == "Inds")
+//        {
+//            if(QFile::exists(localFilename))
+//            {
+//                curr_browser->setReadOnly(true);
+//            }
+
+//        }
+
+//        //! Set Inds and CorrectorOutput files readonly after generating output file - Verifier mode
+//        if (isVerifier && (gCurrentDirName == "Inds" || gCurrentDirName == "CorrectorOutput"))
+//        {
+//            if(QFile::exists(localFilename))
+//            {
+//                QString Inds_file = gCurrentPageName;
+//                Inds_file.replace(".html", ".txt");
+//                QString Corr_file = Inds_file;
+//                Corr_file.replace(".txt", ".html");
+//                for (int i = 0; i < ui->tabWidget_2->count(); i++)
+//                {
+//                    QString tab_name = ui->tabWidget_2->tabText(i);
+//                    if (tab_name == Inds_file || tab_name == Corr_file)
+//                    {
+//                        auto b = (QTextBrowser*)ui->tabWidget_2->widget(i);
+//                        b->setReadOnly(true);
+//                    }
+//                }
+//            }
+//        }
+//    }
+
+//    emit closeSignal();
+
+//}
+
+
+
+//void MainWindow::on_actionSave_triggered()
+//{   if (!mProject.isProjectOpen())
+//        return;
+//    //! Adding entries in Timelog.json about the elapsed time
+//    int nMilliseconds = myTimer.elapsed();
+//    gSeconds = nMilliseconds/1000;                                 //Converting milliseconds to seconds
+//    QString currentVersion = mProject.get_version();
+//    if(mRole == "Verifier" && mRole != currentVersion)
+//        currentVersion = QString::number(currentVersion.toInt() - 1);   //Version is decremented for Verifier
+
+////    timeLog[mRole +":"+ gCurrentPageName +":V-"+ currentVersion]=gSeconds;
+//    QString dateTime = QDateTime::currentDateTime().toString();
+//    newTimeLog[mRole +":"+ gCurrentPageName +":V-"+ currentVersion] = {gSeconds, dateTime};
+
+//    SaveTimeLog();
+
+//    LoadingSpinner *spinner = new LoadingSpinner(this);
+//    spinner->SetSave();
+//    spinner->setModal(false);
+//    QtConcurrent::run(this,&MainWindow::SaveFile);
+//    connect(this, &MainWindow::closeSignal, spinner, &LoadingSpinner::close);
+//    spinner->exec();
+//    QVector <QString> changedWords;
+//    changedWords = editDistance(s1, s2);             // Update CPair by editdistance
+//    QString currentDirAbsolutePath = gDirTwoLevelUp + "/" + gCurrentDirName;
+//    runGlobalReplace(currentDirAbsolutePath, changedWords);
+//    ConvertSlpDevFlag =0;
+//}
 
 
 /*!
@@ -1237,6 +1633,7 @@ map<string, int> wordLineIndex;
 
 void MainWindow::on_actionSpell_Check_triggered()
 {
+    slpNPatternDict slnp;
     if(!curr_browser || curr_browser->isReadOnly())
         return;
 
@@ -1268,15 +1665,15 @@ void MainWindow::on_actionSpell_Check_triggered()
             if(ConvertSlpDevFlag)
             {
                 string word1 = word;
-                word = toslp1(word);
+                word = slnp.toslp1(word);
                 string wordNext;
-                if(hasM40PerAsci(word1))
+                if(slnp.hasM40PerAsci(word1))
                 {
                     wordNext = word1;
                 }
                 else
                 {
-                    wordNext = toDev(word);
+                    wordNext = slnp.toDev(word);
                 }
                 strHtml += wordNext; strHtml += " ";
                 value ++;
@@ -1284,31 +1681,31 @@ void MainWindow::on_actionSpell_Check_triggered()
             else
             {
                 string word1 = word;
-                word = toslp1(word);
+                word = slnp.toslp1(word);
                 string wordNext;
                 //! checks if the word exists in the English language, Seconday OCR, Pwords, Dict and CPair; convert its color coding
-                if(hasM40PerAsci(word1))
+                if(slnp.hasM40PerAsci(word1))
                     wordNext = word1;
 
                 else if(GBook[(word)] > 0 )
                 {
-                    wordNext = toDev(word);
+                    wordNext = slnp.toDev(word);
                     PWords[word]++;
                 }
 
                 else if(PWords[word] > 0)
                 {
-                    wordNext = "<font color=\'gray\'>" + toDev(word) + "</font>";
+                    wordNext = "<font color=\'gray\'>" + slnp.toDev(word) + "</font>";
                 }
                 else if((Dict[word] ==0) && (PWords[word] == 0) && (CPair[word].size() > 0))
                 {
-                    wordNext = "<font color=\'purple\'>" + toDev(CPair[word]) + "</font>";
+                    wordNext = "<font color=\'purple\'>" + slnp.toDev(CPair[word]) + "</font>";
                 }
                 else
                 {
-                    wordNext = findDictEntries(toslp1(word),Dict,PWords, word.size());     //replace m1 with m2,m1 for combined search
-                    wordNext = find_and_replace_oddInstancesblue(wordNext);
-                    wordNext = find_and_replace_oddInstancesorange(wordNext);
+                    wordNext = slnp.findDictEntries(slnp.toslp1(word),Dict,PWords, word.size());     //replace m1 with m2,m1 for combined search
+                    wordNext = slnp.find_and_replace_oddInstancesblue(wordNext);
+                    wordNext = slnp.find_and_replace_oddInstancesorange(wordNext);
                 }
                 strHtml += wordNext;
                 strHtml += " ";
@@ -1343,6 +1740,7 @@ void MainWindow::on_actionSpell_Check_triggered()
  *
  * \sa on_actionSave_triggered() ,get_version(), SaveTimeLog(), GetPageNumber(), LoadDocument()
  */
+int isProjectOpen = 0;
 void MainWindow::on_actionLoad_Next_Page_triggered()
 {
     /*Description
@@ -1479,6 +1877,7 @@ void MainWindow::on_actionLoad_Prev_Page_triggered()
 */
 void MainWindow::on_actionToDevanagari_triggered()
 {
+    slpNPatternDict slnp;
     if(!curr_browser || curr_browser->isReadOnly())
         return;
     QTextCursor cursor = curr_browser->textCursor();
@@ -1490,7 +1889,7 @@ void MainWindow::on_actionToDevanagari_triggered()
     selectedStr = str1.toUtf8().constData();
     cursor.beginEditBlock();
     cursor.removeSelectedText();
-    cursor.insertText(QString::fromStdString(toDev(toslp1(selectedStr))));
+    cursor.insertText(QString::fromStdString(slnp.toDev(slnp.toslp1(selectedStr))));
     cursor.endEditBlock();
 }
 
@@ -1512,7 +1911,8 @@ void MainWindow::on_actionToSlp1_triggered()
     selectedStr = str1.toUtf8().constData();
     cursor.beginEditBlock();
     cursor.removeSelectedText();
-    cursor.insertText(QString::fromStdString((toslp1(selectedStr))));
+    slpNPatternDict slnp;
+    cursor.insertText(QString::fromStdString((slnp.toslp1(selectedStr))));
     cursor.endEditBlock();
 }
 
@@ -1523,6 +1923,8 @@ void MainWindow::on_actionToSlp1_triggered()
 */
 void MainWindow::on_actionLoadGDocPage_triggered()
 {
+    slpNPatternDict slnp;
+    trieEditDis trie;
     /*! If file name is Untitled do nothing*/
     if (mFilename == "Untitled")
     {
@@ -1547,23 +1949,23 @@ void MainWindow::on_actionLoadGDocPage_triggered()
         }
 
         /*! Load PWord and Top Confusion Words*/
-        loadMap(str1.toUtf8().constData(), PWords, "PWords");
+        slnp.loadMap(str1.toUtf8().constData(), PWords, "PWords");
 
         map<string, int> PWordspage;
-        loadMap(str1.toUtf8().constData(), PWordspage, "PWordspage");
-        loadmaptoTrie(TPWords, PWordspage);
+        slnp.loadMap(str1.toUtf8().constData(), PWordspage, "PWordspage");
+        trie.loadmaptoTrie(TPWords, PWordspage);
 
         vector<string> wrong, right;
         QString str2 = mFilename;
 
-        generateCorrectionPairs(wrong, right, str2.toUtf8().constData(), str1.toUtf8().constData());
+        slnp.generateCorrectionPairs(wrong, right, str2.toUtf8().constData(), str1.toUtf8().constData());
 
-        loadConfusionsFont(wrong, right, ConfPmapFont);
-        loadConfusionsFont(wrong, right, ConfPmap);
+        slnp.loadConfusionsFont(wrong, right, ConfPmapFont);
+        slnp.loadConfusionsFont(wrong, right, ConfPmap);
 
         TopConfusions.clear();
         TopConfusionsMask.clear();
-        loadTopConfusions(ConfPmap, TopConfusions, TopConfusionsMask);
+        slnp.loadTopConfusions(ConfPmap, TopConfusions, TopConfusionsMask);
     }
 }
 
@@ -1596,7 +1998,8 @@ void MainWindow::load_data(){
     on_actionLoadSubPS_triggered();
     on_actionLoadConfusions_triggered();
     QString filepath = mProject.GetDir().absolutePath() + "/Dicts/synonyms.csv" ;
-    loadFileCSV(synonym, synrows, filepath.toUtf8().constData());
+    slpNPatternDict slnp;
+    slnp.loadFileCSV(synonym, synrows, filepath.toUtf8().constData());
     ui->lineEdit->setText(initialText);
     LoadDataFlag = 0;
     qDebug() << "done loading ....";
@@ -1652,9 +2055,10 @@ void MainWindow::on_actionLoadData_triggered()
  * \sa loadMap()
  */
 bool loadDict(Project & project) {
+    slpNPatternDict slnp;
     QString localmFilename1 = project.GetDir().absolutePath() + "/Dicts/" + "Dict";
     if (!QFile::exists(localmFilename1)) return false;
-    loadMap(localmFilename1.toUtf8().constData(), Dict, "Dict");
+    slnp.loadMap(localmFilename1.toUtf8().constData(), Dict, "Dict");
     return true;
 }
 
@@ -1678,12 +2082,13 @@ void MainWindow::on_actionLoadDict_triggered()
  */
 void MainWindow::on_actionLoadOCRWords_triggered()
 {
+    slpNPatternDict slnp;
     QString localmFilename1 = mProject.GetDir().absolutePath() + "/Dicts/" + "GEROCR";
     cout << localmFilename1.toUtf8().constData() << endl;
-    loadMapNV(localmFilename1.toUtf8().constData(), GBook, vGBook, "GBook"); localmFilename1 = mFilename1;
+    slnp.loadMapNV(localmFilename1.toUtf8().constData(), GBook, vGBook, "GBook"); localmFilename1 = mFilename1;
     cout << localmFilename1.toUtf8().constData() << endl;
     localmFilename1 = mProject.GetDir().absolutePath() + "/Dicts/" + "IEROCR";
-    loadMapNV(localmFilename1.toUtf8().constData(), IBook, vIBook, "IBook");
+    slnp.loadMapNV(localmFilename1.toUtf8().constData(), IBook, vIBook, "IBook");
     cout << GBook.size() << " " << IBook.size() << endl;
 
 }
@@ -1698,7 +2103,8 @@ void MainWindow::on_actionLoadOCRWords_triggered()
 void MainWindow::on_actionLoadDomain_triggered()
 {
     QString localmFilename1 = mProject.GetDir().absolutePath() + "/Dicts/" + "/PWords";
-    loadMapPWords(vGBook, vIBook, PWords);
+    slpNPatternDict slnp;
+    slnp.loadMapPWords(vGBook, vIBook, PWords);
 }
 
 /*!
@@ -1711,10 +2117,12 @@ void MainWindow::on_actionLoadDomain_triggered()
 map<string, string> LSTM;
 void MainWindow::on_actionLoadSubPS_triggered()
 {
-    size_t count = loadPWordsPatternstoTrie(TPWordsP, PWords);// justsubstrings not patterns exactly // PWordsP,
+    slpNPatternDict slnp;
+    trieEditDis trie;
+    size_t count = trie.loadPWordsPatternstoTrie(TPWordsP, PWords);// justsubstrings not patterns exactly // PWordsP,
     QString localmFilename1 = mProject.GetDir().absolutePath() + "/Dicts/" + "CPair";
 
-    loadCPairs(localmFilename1.toUtf8().constData(), CPairs, Dict, PWords);
+    slnp.loadCPairs(localmFilename1.toUtf8().constData(), CPairs, Dict, PWords);
     localmFilename1 = mFilename1;
 
     localmFilename1 = mProject.GetDir().absolutePath() + "/Dicts/" + "LSTM";
@@ -1731,10 +2139,10 @@ void MainWindow::on_actionLoadSubPS_triggered()
     cout << LSTM.size() << "LSTM Pairs Loaded";
     localmFilename1 = mFilename1;
 
-    loadmaptoTrie(TPWords, PWords);
-    loadmaptoTrie(TDict, Dict);
-    loadmaptoTrie(TGBook, GBook);
-    loadPWordsPatternstoTrie(TGBookP, GBook);
+    trie.loadmaptoTrie(TPWords, PWords);
+    trie.loadmaptoTrie(TDict, Dict);
+    trie.loadmaptoTrie(TGBook, GBook);
+    trie.loadPWordsPatternstoTrie(TGBookP, GBook);
 }
 
 /*!
@@ -1743,8 +2151,9 @@ void MainWindow::on_actionLoadSubPS_triggered()
  */
 void MainWindow::on_actionLoadConfusions_triggered()
 {
+    slpNPatternDict slnp;
     QString localmFilename1 = mProject.GetDir().absolutePath() + "/Dicts/" + "CPair";
-    loadConfusions(localmFilename1.toUtf8().constData(), ConfPmap);
+    slnp.loadConfusions(localmFilename1.toUtf8().constData(), ConfPmap);
     localmFilename1 = mFilename;
 }
 
@@ -3220,17 +3629,25 @@ void MainWindow::on_actionBold_triggered()
     if(!curr_browser || curr_browser->isReadOnly())
         return;
     QTextCursor cursor = curr_browser->textCursor();
+    /*
+     * charFormat returns the format of the character before the position
+     * So, we interchange the ancr and position
+    */
+    int pos = cursor.position();
+    int ancr = cursor.anchor();
+    if (pos < ancr) {
+        cursor.setPosition(pos, QTextCursor::MoveAnchor);
+        cursor.setPosition(ancr, QTextCursor::KeepAnchor);
+    }
     bool isBold = cursor.charFormat().font().bold();
-    QTextCharFormat fmt;
     /*
      * If the font-weight value is bold then
      * it will change it to normal else bold.
     */
+    QTextCharFormat fmt;
     fmt.setFontWeight(isBold ? QFont::Normal : QFont::Bold);
     cursor.mergeCharFormat(fmt);
     curr_browser->mergeCurrentCharFormat(fmt);
-  //  curr_browser->setFont(QFontDialog::getFont(0,QFont::Bold,curr_browser->font()));
-   // cursor.setCharFormat(QFontDialog::getFont(0,QFont::Bold,curr_browser->font()));
 }
 
 /*!
@@ -3256,11 +3673,20 @@ void MainWindow::on_actionItalic_triggered()
         return;
 
     QTextCursor cursor = curr_browser->textCursor();                        // initialize cursor position at text cursor's position
+    /*
+     * charFormat returns the format of the character before the position
+     * So, we interchange the ancr and position
+    */
+    int pos = cursor.position();
+    int ancr = cursor.anchor();
+    if (pos < ancr) {
+        cursor.setPosition(pos, QTextCursor::MoveAnchor);
+        cursor.setPosition(ancr, QTextCursor::KeepAnchor);
+    }
     bool isItalic = cursor.charFormat().font().italic();                    // check if character under cursor is italic or not
 
     QTextCharFormat fmt;
     fmt.setFontItalic(isItalic ? false : true);                             // if font is italic set font to regular, else set it to italic
-
     cursor.mergeCharFormat(fmt);
     curr_browser->mergeCurrentCharFormat(fmt);                              // Merge current character format to character under cursor's format (previous properties + italic/non italic)
 }
@@ -4000,7 +4426,7 @@ void MainWindow::on_actionTurn_In_triggered()
                 QMessageBox::information(0, "Turn In", "Turn In Cancelled");
                 return;
             }
-
+            mProject.set_corrector();
         }
         else
         {
@@ -4016,7 +4442,7 @@ void MainWindow::on_actionTurn_In_triggered()
 
        // ui->actionTurn_In->setEnabled(false);        // Deactivating the "Submit Corrector" button on ui
         QMessageBox::information(0, "Turn In", "Turned In Successfully");
-        deleteEditedFilesLog();
+        //deleteEditedFilesLog();
     }
     else
     {
@@ -4299,6 +4725,7 @@ void MainWindow::on_actionVerifier_Turn_In_triggered()
                 QMessageBox::information(0, "Turn In", "Turn In Cancelled");
                 return;
             }
+            mProject.set_verifier();
         }
         else
         {
@@ -4315,7 +4742,7 @@ void MainWindow::on_actionVerifier_Turn_In_triggered()
         //! Updating the Project Version
         ui->lineEdit_2->setText("Version " + mProject.get_version());
         QMessageBox::information(0, "Turn In", "Turned In Successfully");
-        deleteEditedFilesLog();
+        //deleteEditedFilesLog();
     }
     else
     {
@@ -4341,7 +4768,7 @@ void MainWindow::on_actionSymbols_triggered()
 void MainWindow::on_actionZoom_In_triggered()
 {
     if (z)
-        z->gentle_zoom(1.1);
+        z->gentle_zoom(z->getDefaultZoomInFactor());
 }
 
 /*!
@@ -4351,7 +4778,7 @@ void MainWindow::on_actionZoom_In_triggered()
 void MainWindow::on_actionZoom_Out_triggered()
 {
     if (z)
-        z->gentle_zoom(0.9);
+        z->gentle_zoom(z->getDefaultZoomOutFactor());
 }
 
 /*!
@@ -4389,6 +4816,18 @@ void MainWindow::on_pushButton_clicked()
 bool MainWindow::eventFilter(QObject *object, QEvent *event)
 {
     //! Tooltip documentation
+    markRegion objectMarkRegion;
+    if(event->type() == QEvent::MouseButtonPress)
+    {
+
+        if(isProjectOpen)
+        {
+            if(curr_browser != NULL){
+
+            curr_browser->setStyleSheet("QTextBrowser{selection-background-color: #3297fd; selection-color: #ffffff;}");
+            }
+        }
+    }
     if (event->type() == QEvent::ToolTip)
     {
           event->accept();
@@ -4917,7 +5356,10 @@ void MainWindow::on_compareCorrectorOutput_clicked()
     if(!file.isEmpty())
     {
         InternDiffView *dv = new InternDiffView(this, page, fpath);   //Fetch OCR Image in DiffView2 and Set
-        dv->show();
+        if (dv->validFilePath())
+            dv->show();
+        else
+            dv->close();
       }
     }
     else{
@@ -4953,7 +5395,10 @@ void MainWindow::on_compareVerifierOutput_clicked() //Verifier-Version
     if(!file.isEmpty())
     {
         DiffView *dv = new DiffView(this,page,fpath);
-        dv->show();
+        if (dv->validFilePath())
+            dv->show();
+        else
+            dv->close();
     }
   }
   else{
@@ -5065,7 +5510,7 @@ int MainWindow::writeGlobalCPairsToFiles(QString file_path, QMap <QString, QStri
         //   if(!mapOfReplacements.contains(grmIterator.key()))
         string str = replacementString.toStdString();
         QString::fromStdString(str).toUtf8();
-        QString replacementString1 = QString::fromStdString(str);
+        QString replacementString1 = QString::fromStdString(str).trimmed();
         mapOfReplacements[grmIterator.key()] = grmIterator.value().trimmed();
         s1.replace(re, replacementString1);
         replaced = s1.count(replacementString1);
@@ -5096,7 +5541,7 @@ bool MainWindow::globalReplaceQueryMessageBox(QString old_word, QString new_word
     QAbstractButton *cancelButton = messageBox.addButton(tr("No"), QMessageBox::RejectRole);
 
     messageBox.setCheckBox(cb);
-    QString msg = "Do you want to replace " + old_word + " with " + new_word + " in rest of the pages?\n"
+    QString msg = "Do you want to replace \"" + old_word + "\" with \"" + new_word + "\" in rest of the pages?\n"
                 + "\n\nClick \"Yes\" to save the changes and replace the word in the unedited pages."
                 + "\nClick \"No\" to save the changes and not replace the word in the unedited page.";
 
@@ -5144,8 +5589,8 @@ QMap <QString, QString> MainWindow::getGlobalReplacementMapFromChecklistDialog(Q
         *replaceInAllPages = grDialog.getStatesOfCheckboxes();
         globalReplacementMap = grDialog.getFilteredGlobalReplacementMap();
     }
-
-    return globalReplacementMap;
+    //qDebug()<<"globalReplacementMap"<<globalReplacementMap<<endl;
+    return globalReplacementMap; 
 
 }
 
@@ -5176,28 +5621,26 @@ void MainWindow::runGlobalReplace(QString currentFileDirectory , QVector <QStrin
     int x1 = 0;
     int check=2;
 
+//    qDebug()<<"changedWords"<<changedWords<<endl;
     //! if only one change spawn checkbox
     if (noOfChangedWords == 1){
         QRegExp sep("\\s*=>*");
         QStringList changesList = changedWords[0].split(sep, QString::SkipEmptyParts );
-        qDebug()<<"Separator"<<sep;
-        qDebug()<<"changesList[0]"<<changesList[0];
-        qDebug()<<"changesList[1]"<<changesList[1];
         bool updateGlobalCPairs = globalReplaceQueryMessageBox(changesList[0], changesList[1],check);
-        if (updateGlobalCPairs)
+        if (updateGlobalCPairs){
             globalReplacementMap[changesList[0]] = changesList[1];
+            if(check==1)
+                replaceInAllPages_Map.insert(changesList[0],changesList[1]);
+            else
+                replaceInUneditedPages_Map.insert(changesList[0],changesList[1]);
+        }
 
-//        QStringList changesList = changedWords[0].split(" ");
-//        bool updateGlobalCPairs = globalReplaceQueryMessageBox(changesList[1], changesList[3], check);
-////        qDebug()<<"Check"<<check;
-//        if (updateGlobalCPairs)
-//            globalReplacementMap[changesList[1]] = changesList[3];
     }
     //! if there is more than 1 change spawn a checklist and get the checked pairs only
     else if(noOfChangedWords > 1){
 
         globalReplacementMap = getGlobalReplacementMapFromChecklistDialog(changedWords, &replaceInAllPages);
-
+        //qDebug()<<"globalReplacementMap"<<globalReplacementMap<<endl;
         QMap<QString, QString>::iterator it;
         it = globalReplacementMap.begin();
         for (int i = 0; i < replaceInAllPages.size(); i++)
@@ -5306,14 +5749,15 @@ void MainWindow::runGlobalReplace(QString currentFileDirectory , QVector <QStrin
         QFile csvFile(filename);
         if(!csvFile.exists())
         {
-            csvFile.open(QFile::ReadWrite);
+            csvFile.open(QIODevice::ReadWrite | QIODevice::Append);
             QTextStream output(&csvFile);
+            output.setCodec("UTF-8");
             output << "Source Word,Target Word,Type of Replacement,Time of Replacement,Page Name,Set name";
         }
 
         else
         {
-            csvFile.open(QFile::ReadWrite);
+            csvFile.open(QIODevice::ReadWrite | QIODevice::Append);
         }
 
         for (grmIterator = globalReplacementMap.begin(); grmIterator != globalReplacementMap.end(); ++grmIterator)
@@ -5334,6 +5778,7 @@ void MainWindow::runGlobalReplace(QString currentFileDirectory , QVector <QStrin
             QString time = current.toString();
 
             QTextStream output(&csvFile);
+            output.setCodec("UTF-8");
             //qDebug() << "csv Contents" << output.readAll();
             output << "\n";
             output<<sourceString<<","<<replaceString<<","<<typeOfReplacement<<","<<time<<","<<gCurrentPageName<<","<<setName;
@@ -5430,13 +5875,19 @@ void MainWindow::globalReplacePreviewfn(QMap <QString, QString> previewMap , QVe
                 {
                     QStandardItem *Item = new QStandardItem(pages);
                     model->setItem(lineindex, 0,Item);
-                    QStandardItem *Item1 = new QStandardItem(sentences.at(i));
+                    string sent = sentences.at(i).toStdString();
+                    string newSentence = sent.substr(sent.find("==>")+3);
+                    string oldSentence = sent.substr(0, sent.find("==>"));
+                    QStandardItem *Item1 = new QStandardItem(QString::fromStdString(oldSentence));
                     model->setItem(lineindex, 1,Item1);
+                    QStandardItem *Item2 = new QStandardItem(QString::fromStdString(newSentence));
+                    model->setItem(lineindex, 2,Item2);
                     lineindex++;
                 }
             }
             model->setHeaderData (0,Qt::Horizontal, QObject::tr ("Page"));
-            model->setHeaderData (1,Qt::Horizontal, QObject::tr ("Sentences"));
+            model->setHeaderData (1,Qt::Horizontal, QObject::tr ("Before Repalce"));
+            model->setHeaderData (2,Qt::Horizontal, QObject::tr ("After Replace"));
       }
   globalReplacePreview gp(this, model);
   gp.exec();
@@ -5461,8 +5912,8 @@ QMap<QString,QStringList> MainWindow::getBeforeAndAfterWords(QString fPath,QMap 
   for (grmIterator = globalReplacementMap.begin(); grmIterator != globalReplacementMap.end(); ++grmIterator)
   {
       QString oldWord = grmIterator.key();
+      QString newWord = grmIterator.value();
       QRegularExpression rx(".*"+oldWord+".*");
-
       for(int i=0;i<rx.captureCount()+1;++i)
       {
          QRegularExpressionMatchIterator match = rx.globalMatch(plain);
@@ -5470,9 +5921,13 @@ QMap<QString,QStringList> MainWindow::getBeforeAndAfterWords(QString fPath,QMap 
            {
               QRegularExpressionMatch Extmatch = match.next();
               QString matched = Extmatch.captured(i);
-              if(matched.length() >0 )
+              QString newSentence = matched;
+              newSentence = newSentence.replace(oldWord, newWord);
+              QString finalSentence = matched + "==>" + newSentence;
+              qDebug() << "Final Sentence" << finalSentence;
+              if(newSentence.length() >0 )
               {
-                  sentences << matched;
+                  sentences << finalSentence;
               }
            }
        }
@@ -5486,6 +5941,10 @@ QMap<QString,QStringList> MainWindow::getBeforeAndAfterWords(QString fPath,QMap 
   return previewPagesMap;
 
 }
+
+
+
+
 //Global CPair End
 
 /*!
@@ -5981,7 +6440,7 @@ void MainWindow::LoadDocument(QFile * f, QString ext, QString name) {
             b->setReadOnly(true);
         }
     }
-
+    isProjectOpen = 1;
     QTextStream stream(f);
     stream.setCodec("UTF-8");
     QString input = stream.readAll();
@@ -5994,7 +6453,7 @@ void MainWindow::LoadDocument(QFile * f, QString ext, QString name) {
         string line;
         while (getline(iss, line)) {
             QString qline = QString::fromStdString(line);
-            if((line == "\n") | (line == "") | (qline.contains("\r")) )
+            if((line == "\n") || (line == "") || (qline.contains("\r")) )
                 strHtml+=line + "</p><p>";
             else strHtml += line + "<br />";
         }
@@ -6011,6 +6470,21 @@ void MainWindow::LoadDocument(QFile * f, QString ext, QString name) {
     }
     if (ext == "html") {
         b->setHtml(input);
+//        input = b->toPlainText();
+//        QStringList s1;
+//        s1=input.split(QRegExp(" "));
+
+//        QRegExp regex("[\u0900-\u097F]");
+//        for(int i=0;i<s1.count();i++){
+//            if(s1[i].contains(regex)){
+//                string str=s1[i].toStdString();
+//                str=toslp1(str);
+//                str=toDev(str);
+//                s1[i]=QString::fromStdString(str);
+//            }
+//        }
+//        input=s1.join(" ");
+//        b->setText(input);
     }
     QDir::setCurrent(gDirOneLevelUp);   //changing application path to load document in a relative path
     b->setFont(font);
@@ -6133,7 +6607,7 @@ void MainWindow::LoadDocument(QFile * f, QString ext, QString name) {
         }
     }
    WordCount();
-
+   readSettings();
 }
 
 /*!
@@ -6158,7 +6632,7 @@ void MainWindow::LoadImageFromFile(QFile * f)
     ui->graphicsView->setScene(graphic);
     ui->graphicsView->fitInView(graphic->itemsBoundingRect(), Qt::KeepAspectRatio);
     if (z)delete z;
-    z = new Graphics_view_zoom(ui->graphicsView);
+    z = new Graphics_view_zoom(ui->graphicsView, graphic,200);
     z->set_modifiers(Qt::NoModifier);
     z->zoom_level = 100;
     connect(z, SIGNAL(zoomed()), this, SLOT(zoomedUsingScroll()));
@@ -6644,7 +7118,6 @@ void MainWindow:: highlight(QTextBrowser *b , QString input)
     for (grmIterator = mapOfReplacements.begin(); grmIterator != mapOfReplacements.end(); ++grmIterator)
     {
         count = input.count(grmIterator.value(),Qt::CaseInsensitive);
-        qDebug()<<"Word for highlighting"<<grmIterator.value();
         numReplaced=0;
         from=0;
         int flag=0;
@@ -6832,62 +7305,47 @@ void MainWindow::on_textBrowser_textChanged()
 void MainWindow::on_zoom_Out_Button_clicked()
 {
     if (z)
-        z->gentle_zoom(0.9);
+        z->gentle_zoom(z->getDefaultZoomOutFactor());
 }
 
 
 void MainWindow::on_zoom_In_Button_clicked()
 {
     if (z)
-        z->gentle_zoom(1.1);
+        z->gentle_zoom(z->getDefaultZoomInFactor());
 }
 
 
 void MainWindow::zoom_slider_valueChanged(int value)
 {
-    int zoomPercent;
-    float zoom_factor;
-    ui->zoom_level_value->setText(QString::number(value) + "%");
-    if (loadimage)
-    {
-        if ( z->zoom_level == value )
-            return;
-
-        zoomPercent = (value - z->zoom_level) / 10;
-        if ( zoomPercent < 0 )
-        {
-            zoomPercent *= -1;
-            zoom_factor = 0.9;
-        }
-        else if ( zoomPercent > 0 )
-        {
-            zoom_factor = 1.1;
-        }
-        for (int i = 0; i < zoomPercent; i++)
-        {
-            z->gentle_zoom(zoom_factor);
-        }
-    }
+    ui->zoom_level_value->setText(QString::number(z->zoom_level) + "%");
 }
 
 
 void MainWindow::zoom_slider_moved(int value)
 {
-    int setNewValue;
-
-    if ( value % 10 != 0 )
-    {
-        setNewValue = (value / 10)*10 + 10;
-        ui->horizontalSlider->setValue(setNewValue);
+    if (value % 10 != 0) {
+        value = (value / 10)*10 + 10;
     }
+    double zoomFactor;
+    if (value > z->zoom_level) {
+        zoomFactor = 1 + ((value - z->zoom_level) / 100.0);
+    }
+    else if (value < z->zoom_level) {
+        zoomFactor = 1 - ((z->zoom_level - value) / 100.0);
+    }
+    else return;
+
+    z->gentle_zoom(zoomFactor);
+    ui->horizontalSlider->setValue(value);
 }
 
 
 void MainWindow::zoomedUsingScroll()
 {
-    ui->zoom_level_value->setText(QString::number(z->zoom_level) + "%");
     ui->horizontalSlider->setValue(z->zoom_level);
 }
+
 
 void MainWindow::createActions()
 {
@@ -6903,6 +7361,8 @@ void MainWindow::on_actionUndo_Global_Replace_triggered()
     {
         QString oldWord = globallyReplacedWords.firstKey();
         QString newWord = globallyReplacedWords.value(oldWord);
+        oldWord=oldWord.trimmed();
+        newWord=newWord.trimmed();
         bool replace = undoGlobalReplace_Single_Word(oldWord, newWord);
 
         if ( replace )
@@ -6910,7 +7370,7 @@ void MainWindow::on_actionUndo_Global_Replace_triggered()
     }
     else if ( globallyReplacedWords.size() > 1 )
     {
-        qDebug() << "For Multiple Words";
+        //qDebug() << "For Multiple Words";
         undoGRMap = getUndoGlobalReplaceMap_Multiple_Words(globallyReplacedWords);
     }
 
@@ -7070,3 +7530,129 @@ void MainWindow::on_actionUpload_triggered()
     replaceInAllFilesFromTSVfile();
 }
 
+
+void MainWindow::on_justify_triggered()
+{
+    if(!curr_browser || curr_browser->isReadOnly())
+        return;
+    curr_browser->setAlignment(Qt::AlignJustify);
+}
+
+void MainWindow::on_actionFont_Color_triggered()
+{
+    if(!curr_browser || curr_browser->isReadOnly())
+      {
+        QMessageBox::information(0, "Error", "Please check whether the page is opened and you are editing in appropriate role.");
+        return;
+      }
+
+    QTextCursor cursor = curr_browser->textCursor();
+    QColor choosencolor = QColorDialog::getColor();
+
+    QTextCharFormat charFormat;
+    charFormat.setForeground(QBrush(choosencolor));
+    cursor.mergeCharFormat(charFormat);
+}
+
+void MainWindow::reLoadTabWindow()
+{
+    string localFilename = mFilename.toUtf8().constData();
+    QFile *file = new QFile(QString::fromStdString(localFilename));
+    QFileInfo f(*file);
+    QString suff = f.completeSuffix();
+    if (suff == "txt" || suff == "html") {
+      LoadDocument(file,suff,currentTabPageName );
+    }
+
+}
+
+
+
+void MainWindow::on_lineEditSearch_textChanged(const QString &arg1)
+{
+    ui->treeView->selectionModel()->clearSelection();
+    QModelIndex currentTreeItemIndex=ui->treeView->selectionModel()->currentIndex();
+    QModelIndex parentIndex = currentTreeItemIndex.parent();
+
+    auto *model = ui->treeView->model();
+    int rowCount = ui->treeView->model()->rowCount(parentIndex);
+    //qDebug()<<"rowCount"<<rowCount;
+    QModelIndexList children;
+
+    QString item;
+    for(int i=0;i<model->rowCount();i++){
+        children<<model->index(i,0);
+    }
+    //qDebug()<<"Children size"<<children.size();
+    for(int i=0;i<children.size();i++){
+        for(int j=0;j<model->rowCount(children[i]);j++){
+            children<<children[i].child(j,0);
+
+            //qDebug()<<"Item"<<item;
+            //if(item.contains(arg1)){
+            //ui->treeView->selectionModel()->setCurrentIndex(children[j],QItemSelectionModel::Select);
+            //}
+        }
+    }
+    //qDebug()<<"Children size"<<children.size();
+    for(int i=0;i<children.size();i++){
+        item=children[i].data(Qt::DisplayRole).toString();
+      //  qDebug()<<"Item"<<item;
+        if(item.contains(arg1)){
+        ui->treeView->selectionModel()->setCurrentIndex(children[i],QItemSelectionModel::Select);
+        }
+    }
+}
+
+void MainWindow::writeSettings()
+{
+    int pos = curr_browser->textCursor().position();
+    qDebug()<<pos;
+    QString filename = gDirTwoLevelUp + "/cursor.txt";
+      QFile myFile (filename);
+      myFile.open(QIODevice::ReadWrite);
+      QDataStream in (&myFile);
+      in.setVersion(QDataStream::Qt_5_3);
+      QMap <QString ,int> curpos;
+      in >> curpos;
+      if(curpos.find(gCurrentPageName)==curpos.end()){
+            curpos.insert(gCurrentPageName,pos);
+            qDebug()<<curpos[gCurrentPageName];
+        }
+      else{
+            curpos[gCurrentPageName]=pos;
+        }
+      myFile.resize(0);
+      QDataStream out (&myFile);
+      out.setVersion(QDataStream::Qt_5_3);
+      out<<curpos;
+      myFile.flush();
+      qDebug() << "cursor.txt written .. ";
+      myFile.close();
+
+}
+
+void MainWindow::readSettings()
+{
+    int pos1;
+
+    QString filename = gDirTwoLevelUp + "/cursor.txt";
+        QFile myFile (filename);
+        myFile.open(QIODevice::ReadOnly);
+        QMap<QString,int> map;
+        QDataStream in (&myFile);
+        in.setVersion(QDataStream::Qt_5_3);
+        in >> map;
+        qDebug()<<map;
+        pos1=map[gCurrentPageName];
+        qDebug()<<"pos1"<<pos1;
+        myFile.close();
+        curr_browser->setStyleSheet("QTextBrowser{selection-background-color: #ffa500; selection-color: #ffffff;}");
+
+    auto cursor = curr_browser->textCursor();
+    cursor.setPosition(pos1);
+    cursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor);
+    curr_browser->setTextCursor(cursor);
+
+
+}

@@ -379,6 +379,23 @@ QScrollBar::sub-line:vertical {
            </attribute>
            <layout class="QVBoxLayout" name="verticalLayout_3">
             <item>
+             <widget class="QLineEdit" name="lineEditSearch">
+              <property name="styleSheet">
+               <string notr="true">#lineEditSearch{
+background-color: rgb(255, 255, 255);
+color:black;
+border:0px;
+height:26.96px;
+padding-top:1pxx; 
+border-radius:4.8px; 
+padding-left:1.3px; 
+margin-top: 8px;
+
+}</string>
+              </property>
+             </widget>
+            </item>
+            <item>
              <widget class="QTreeView" name="treeView">
               <property name="sizePolicy">
                <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
@@ -452,7 +469,8 @@ QScrollBar:vertical {
                                             }
 QScrollBar::handle:vertical { 
                                                 background-color:  rgba(1, 22, 51, 0.5);
-                                                min-height: 273.41px;
+                                                min-height: 50px;
+												  max-height: 300px;
 														border: 0px solid red; 
 														border-radius:4.905px;
                                             }
@@ -836,6 +854,7 @@ color: rgb(0, 0, 0); height:37.39px; border:0px; width:184.8px; padding-left:7.8
 	padding-top:15px;
 	margin-top:-15px; 
    height:37.9px;
+   font-size: 11pt !important;
 }
 </string>
         </property>
@@ -905,6 +924,18 @@ QSlider::handle:horizontal:disabled {
 background: grey;
 }
 </string>
+           </property>
+           <property name="minimum">
+            <number>1</number>
+           </property>
+           <property name="maximum">
+            <number>100</number>
+           </property>
+           <property name="singleStep">
+            <number>10</number>
+           </property>
+           <property name="pageStep">
+            <number>0</number>
            </property>
            <property name="orientation">
             <enum>Qt::Horizontal</enum>
@@ -1202,6 +1233,7 @@ background-color: #EEF0F2;
    <addaction name="actionToDevanagari"/>
    <addaction name="separator"/>
    <addaction name="actionAllFontProperties"/>
+   <addaction name="actionFont_Color"/>
    <addaction name="actionBold"/>
    <addaction name="actionItalic"/>
    <addaction name="actionUnBold"/>
@@ -1212,6 +1244,7 @@ background-color: #EEF0F2;
    <addaction name="actionLeftAlign"/>
    <addaction name="actionCentreAlign"/>
    <addaction name="actionRightAlign"/>
+   <addaction name="justify"/>
    <addaction name="actionInsert_Horizontal_Line"/>
    <addaction name="separator"/>
    <addaction name="actionHighlight"/>
@@ -1965,6 +1998,24 @@ background-color: #EEF0F2;
   <action name="actionUpload">
    <property name="text">
     <string>Upload and Replace</string>
+   </property>
+  </action>
+  <action name="justify">
+   <property name="icon">
+    <iconset resource="AppResources.qrc">
+     <normaloff>:/Images/Resources/align para.png</normaloff>:/Images/Resources/align para.png</iconset>
+   </property>
+   <property name="text">
+    <string>AlignJustify</string>
+   </property>
+  </action>
+  <action name="actionFont_Color">
+   <property name="icon">
+    <iconset resource="AppResources.qrc">
+     <normaloff>:/Images/Resources/font color.png</normaloff>:/Images/Resources/font color.png</iconset>
+   </property>
+   <property name="text">
+    <string>Font Color</string>
    </property>
   </action>
  </widget>
